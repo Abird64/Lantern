@@ -1,0 +1,60 @@
+import { useUIStore } from '@/stores/uiStore';
+import { Home, ListTodo, Calendar, BookOpen, Users, Settings, X } from 'lucide-react';
+
+const tabs = [
+  { id: 'lantern', label: '提灯', icon: Home },
+  { id: 'tasks', label: '尘事', icon: ListTodo },
+  { id: 'schedule', label: '时序', icon: Calendar },
+  { id: 'diary', label: '尘笺', icon: BookOpen },
+  { id: 'relations', label: '相识', icon: Users },
+  { id: 'settings', label: '设置', icon: Settings },
+];
+
+export function DropdownMenu() {
+  const { activeTab, setActiveTab, menuOpen, setMenuOpen } = useUIStore();
+
+  if (!menuOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50">
+      {/* 遮罩层 */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => setMenuOpen(false)}
+      />
+
+      {/* 下拉菜单 */}
+      <div className="absolute top-20 left-4 w-[200px] bg-[#1B1B1B] rounded-2xl shadow-2xl overflow-hidden">
+        <div className="p-2">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setMenuOpen(false);
+                }}
+                className={`w-full h-12 rounded-xl flex items-center gap-3 px-4 transition-all ${
+                  isActive
+                    ? 'bg-[#58A968]'
+                    : 'hover:bg-white/10'
+                }`}
+              >
+                <Icon size={20} className={isActive ? 'text-white' : 'text-white/70'} />
+                <span
+                  className={`font-zhuque text-xl ${
+                    isActive ? 'text-white' : 'text-white/70'
+                  }`}
+                >
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

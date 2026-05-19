@@ -1,0 +1,71 @@
+import { useState } from 'react';
+
+export function WindowControls() {
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  const buttons = [
+    { id: 0, color: '#28C840', label: '最小化' },  // 绿色 - 最小化
+    { id: 1, color: '#FEBC2E', label: '恢复' },   // 黄色 - 恢复
+    { id: 2, color: '#FF5F57', label: '关闭' },   // 红色 - 关闭
+  ];
+
+  return (
+    <div className="flex items-center gap-3">
+      {buttons.map((btn) => (
+        <button
+          key={btn.id}
+          title={btn.label}
+          className="w-8 h-8 rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center"
+          style={{
+            backgroundColor: hovered === btn.id ? btn.color : 'rgba(255, 255, 255, 0.1)',
+          }}
+          onMouseEnter={() => setHovered(btn.id)}
+          onMouseLeave={() => setHovered(null)}
+        >
+          {/* 悬停时显示图标 */}
+          {hovered === btn.id && (
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {btn.id === 0 && (
+                // 最小化 - 横线
+                <path
+                  d="M1 5H9"
+                  stroke="rgba(0,0,0,0.5)"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                />
+              )}
+              {btn.id === 1 && (
+                // 恢复 - 方框
+                <rect
+                  x="2"
+                  y="2"
+                  width="6"
+                  height="6"
+                  rx="0.5"
+                  stroke="rgba(0,0,0,0.5)"
+                  strokeWidth="1.2"
+                  fill="none"
+                />
+              )}
+              {btn.id === 2 && (
+                // 关闭 - X
+                <path
+                  d="M2 2L8 8M8 2L2 8"
+                  stroke="rgba(0,0,0,0.5)"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                />
+              )}
+            </svg>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
