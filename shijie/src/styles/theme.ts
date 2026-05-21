@@ -71,13 +71,40 @@ export const themes: Record<string, PageTheme> = {
     text: '#FFFFFF',
     card: '#2D3A32',
   },
+  skills: {
+    name: '修为',
+    bg: '#1B1B2F',
+    nav: '#2A2A3E',
+    accent: '#8A6DA7',
+    accentLight: '#8A6DA750',
+    text: '#E8E0D0',
+    card: '#252540',
+  },
 };
 
-// ========== XP 技能颜色 ==========
+// ========== 六维属性颜色 ==========
+export interface SkillColorInfo {
+  hex: string;
+  name: string;
+}
+
+export const SKILL_COLORS: Record<string, SkillColorInfo> = {
+  knowledge:    { hex: '#3A8FB7', name: '学识' },
+  physique:     { hex: '#4B7F52', name: '筋骨' },
+  charm:        { hex: '#C83C3C', name: '风华' },
+  talent:       { hex: '#E8B959', name: '才情' },
+  worldliness:  { hex: '#B87353', name: '入世' },
+  cultivation:  { hex: '#8A6DA7', name: '修为' },
+};
+
+/** 按固定顺序排列的技能ID */
+export const SKILL_ORDER = ['knowledge', 'physique', 'charm', 'talent', 'worldliness', 'cultivation'];
+
+// 兼容旧名
 export const xpColors = {
-  knowledge: '#2A8CB7',
-  talent: '#E6B85C',
-  physique: '#58A968',
+  knowledge: SKILL_COLORS.knowledge.hex,
+  talent: SKILL_COLORS.talent.hex,
+  physique: SKILL_COLORS.physique.hex,
 };
 
 // ========== 间距系统 (8px 基准) ==========

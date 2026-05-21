@@ -1,0 +1,165 @@
+use rusqlite::{params, Connection, Row};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Skill {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub parent_id: Option<String>,
+    pub category: Option<String>,
+    pub level: i32,
+    pub total_xp: i32,
+    pub is_unlocked: i32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+const SKILL_COLUMNS: &str = "id, name, description, icon, color, parent_id, category, level, total_xp, is_unlocked, created_at, updated_at";
+
+fn skill_from_row(row: &Row) -> rusqlite::Result<Skill> {
+    Ok(Skill {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        description: row.get("description")?,
+        icon: row.get("icon")?,
+        color: row.get("color")?,
+        parent_id: row.get("parent_id")?,
+        category: row.get("category")?,
+        level: row.get("level")?,
+        total_xp: row.get("total_xp")?,
+        is_unlocked: row.get("is_unlocked")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TaskSkill {
+    pub task_id: String,
+    pub skill_id: String,
+    pub xp_amount: i32,
+}
+
+fn task_skill_from_row(row: &Row) -> rusqlite::Result<TaskSkill> {
+    Ok(TaskSkill {
+        task_id: row.get("task_id")?,
+        skill_id: row.get("skill_id")?,
+        xp_amount: row.get("xp_amount")?,
+    })
+}
+
+fn now() -> String {
+    chrono::Local::now().to_rfc3339()
+}
+
+fn gen_id() -> String {
+    nanoid::nanoid!()
+}
+
+/// 6个默认技能的定义
+const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[
+    ("knowledge", "学识", "#3A8FB7"),
+    ("physique", "筋骨", "#4B7F52"),
+    ("charm", "风华", "#C83C3C"),
+    ("talent", "才情", "#E8B959"),
+    ("worldliness", "入世", "#B87353"),
+    ("cultivation", "修为", "#8A6DA7"),
+];
+
+/// 初始化6个默认技能（INSERT OR IGNORE，安全重复调用）
+pub fn initialize_default_skills(conn: &Connection) -> Result<(), String> {
+    let time = now();
+    for (id, name, color) in DEFAULT_SKILLS {
+        conn.execute(
+            "INSERT OR IGNORE INTO skills (id, name, color, level, total_xp, is_unlocked, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 1, 0, 1, ?4, ?5)",
+            params![id, name, color, time, time],
+        )
+        .map_err(|e| format!("Failed to initialize skill {}: {}", name, e))?;
+    }
+    log::info!("Default skills initialized");
+    Ok(())
+}
+
+/// 获取所有技能（按固定顺序排列）
+pub fn list_skills(conn: &Connection) -> Result<Vec<Skill>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {} FROM skills ORDER BY CASE id
+               WHEN 'knowledge' THEN 0
+               WHEN 'physique' THEN 1
+               WHEN 'charm' THEN 2
+               WHEN 'talent' THEN 3
+               WHEN 'worldliness' THEN 4
+               WHEN 'cultivation' THEN 5
+               ELSE 6
+             END",
+            SKILL_COLUMNS
+        ))
+        .map_err(|e| format!("Failed to prepare list_skills: {}", e))?;
+
+    let skills = stmt
+        .query_map([], skill_from_row)
+        .map_err(|e| format!("Failed to query skills: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect skills: {}", e))?;
+
+    Ok(skills)
+}
+
+/// 获取单个技能
+pub fn get_skill(conn: &Connection, id: &str) -> Result<Skill, String> {
+    conn.query_row(
+        &format!("SELECT {} FROM skills WHERE id = ?1", SKILL_COLUMNS),
+        params![id],
+        skill_from_row,
+    )
+    .map_err(|e| format!("Skill not found: {}", e))
+}
+
+/// 获取任务的所有技能XP分配
+pub fn get_task_skills(conn: &Connection, task_id: &str) -> Result<Vec<TaskSkill>, String> {
+    let mut stmt = conn
+        .prepare("SELECT task_id, skill_id, xp_amount FROM task_skills WHERE task_id = ?1")
+        .map_err(|e| format!("Failed to prepare get_task_skills: {}", e))?;
+
+    let skills = stmt
+        .query_map(params![task_id], task_skill_from_row)
+        .map_err(|e| format!("Failed to query task_skills: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect task_skills: {}", e))?;
+
+    Ok(skills)
+}
+
+/// 设置任务的技能XP分配（先删后插）
+pub fn set_task_skills(
+    conn: &Connection,
+    task_id: &str,
+    skills: &[(String, i32)],
+) -> Result<(), String> {
+    // 删除旧的分配
+    conn.execute(
+        "DELETE FROM task_skills WHERE task_id = ?1",
+        params![task_id],
+    )
+    .map_err(|e| format!("Failed to clear task_skills: {}", e))?;
+
+    // 插入新的分配（跳过 xp_amount <= 0 的）
+    for (skill_id, xp_amount) in skills {
+        if *xp_amount <= 0 {
+            continue;
+        }
+        let id = gen_id();
+        conn.execute(
+            "INSERT INTO task_skills (id, task_id, skill_id, xp_amount) VALUES (?1, ?2, ?3, ?4)",
+            params![id, task_id, skill_id, xp_amount],
+        )
+        .map_err(|e| format!("Failed to insert task_skill: {}", e))?;
+    }
+
+    Ok(())
+}

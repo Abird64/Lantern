@@ -1,55 +1,142 @@
 import { create } from 'zustand';
-
-export interface Task {
-  id: string;
-  title: string;
-  date: string;
-  completed: boolean;
-  skills: { name: string; xp: number; color: string }[];
-  category: string;
-}
+import type { Task, CreateTaskInput, UpdateTaskInput, CompleteResult } from '@/types/task';
+import * as taskService from '@/services/taskService';
 
 interface TaskState {
   tasks: Task[];
+  isLoading: boolean;
+  error: string | null;
+
+  // 操作
+  fetchTasks: (status?: string) => Promise<void>;
+  createTask: (input: CreateTaskInput) => Promise<Task>;
+  updateTask: (id: string, input: UpdateTaskInput) => Promise<Task>;
+  deleteTask: (id: string, cascade?: boolean) => Promise<void>;
+  completeTask: (id: string) => Promise<CompleteResult>;
+  uncompleteTask: (id: string) => Promise<void>;
+  searchTasks: (query: string) => Promise<Task[]>;
+  fetchSubtasks: (parentId: string) => Promise<Task[]>;
+
+  // 筛选
   filter: string;
-  fetchTasks: () => Promise<void>;
-  addTask: (task: Omit<Task, 'id'>) => void;
-  completeTask: (id: string) => void;
   setFilter: (filter: string) => void;
 }
 
-// 模拟数据
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: '高数作业',
-    date: '2026-03-24',
-    completed: false,
-    skills: [
-      { name: '学识', xp: 3, color: '#2A8CB7' },
-      { name: '才情', xp: 3, color: '#E6B85C' },
-    ],
-    category: 'study',
-  },
-];
-
 export const useTaskStore = create<TaskState>((set) => ({
-  tasks: mockTasks,
-  filter: 'wanxiang',
-  fetchTasks: async () => {
-    // 模拟API调用
-    set({ tasks: mockTasks });
+  tasks: [],
+  isLoading: false,
+  error: null,
+  filter: 'all',
+
+  fetchTasks: async (status?: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const tasks = await taskService.listTasks(
+        status ? { status } : undefined
+      );
+      set({ tasks, isLoading: false });
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
   },
-  addTask: (task) => {
-    const newTask = { ...task, id: Date.now().toString() };
-    set((state) => ({ tasks: [...state.tasks, newTask] }));
+
+  createTask: async (input) => {
+    set({ isLoading: true, error: null });
+    try {
+      const task = await taskService.createTask(input);
+      set((state) => ({
+        tasks: [task, ...state.tasks],
+        isLoading: false,
+      }));
+      return task;
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+      throw e;
+    }
   },
-  completeTask: (id) => {
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id ? { ...t, completed: true } : t
-      ),
-    }));
+
+  updateTask: async (id, input) => {
+    set({ isLoading: true, error: null });
+    try {
+      const task = await taskService.updateTask(id, input);
+      set((state) => ({
+        tasks: state.tasks.map((t) => (t.id === id ? task : t)),
+        isLoading: false,
+      }));
+      return task;
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+      throw e;
+    }
   },
+
+  deleteTask: async (id, cascade = false) => {
+    set({ isLoading: true, error: null });
+    try {
+      await taskService.deleteTask(id, cascade);
+      set((state) => ({
+        tasks: state.tasks.filter((t) => t.id !== id),
+        isLoading: false,
+      }));
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+    }
+  },
+
+  completeTask: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await taskService.completeTask(id);
+      set((state) => ({
+        tasks: state.tasks.map((t) =>
+          t.id === id
+            ? { ...t, status: 'completed' as const, xp_earned: result.xp_earned }
+            : t
+        ),
+        isLoading: false,
+      }));
+      return result;
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+      throw e;
+    }
+  },
+
+  uncompleteTask: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      await taskService.uncompleteTask(id);
+      set((state) => ({
+        tasks: state.tasks.map((t) =>
+          t.id === id
+            ? { ...t, status: 'pending' as const, xp_earned: 0, completed_at: null }
+            : t
+        ),
+        isLoading: false,
+      }));
+    } catch (e) {
+      set({ error: String(e), isLoading: false });
+      throw e;
+    }
+  },
+
+  searchTasks: async (query) => {
+    try {
+      return await taskService.searchTasks(query);
+    } catch (e) {
+      set({ error: String(e) });
+      return [];
+    }
+  },
+
+  fetchSubtasks: async (parentId) => {
+    try {
+      return await taskService.listSubtasks(parentId);
+    } catch (e) {
+      set({ error: String(e) });
+      return [];
+    }
+  },
+
   setFilter: (filter) => set({ filter }),
 }));

@@ -6,6 +6,7 @@ import {
   SchedulePage,
   DiaryPage,
   RelationsPage,
+  SkillsPage,
   SettingsPage,
 } from '@/pages';
 import '@/styles/global.css';
@@ -25,6 +26,8 @@ function App() {
         return <DiaryPage />;
       case 'relations':
         return <RelationsPage />;
+      case 'skills':
+        return <SkillsPage />;
       case 'settings':
         return <SettingsPage />;
       default:
