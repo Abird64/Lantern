@@ -1,4 +1,4 @@
-import { HTMLAttributes, forwardRef } from 'react';
+import { type HTMLAttributes, forwardRef } from 'react';
 
 interface TabProps extends HTMLAttributes<HTMLButtonElement> {
   active?: boolean;

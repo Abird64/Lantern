@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
-import { Send, Clock, X } from 'lucide-react';
+import { Clock, X } from 'lucide-react';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
+import { LanternSvg } from '@/components/ui';
 
 export function HomePage() {
   const [input, setInput] = useState('');
@@ -94,12 +95,7 @@ export function HomePage() {
 
             {/* 提灯图片容器 */}
             <div className="relative w-[280px] h-[340px] flex items-center justify-center">
-              <img
-                src="/assets/CodeBuddyAssets/47_57/8.png"
-                alt="提灯"
-                className="w-full h-full object-contain drop-shadow-2xl"
-                style={{ filter: 'drop-shadow(0 0 30px rgba(100, 150, 200, 0.4))' }}
-              />
+              <LanternSvg />
             </div>
           </div>
 

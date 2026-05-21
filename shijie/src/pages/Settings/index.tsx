@@ -1,9 +1,17 @@
 import { Card } from '@/components/ui';
 import { useUIStore } from '@/stores/uiStore';
+import { useWeightsStore, type Weights } from '@/stores/weightsStore';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
+
+const weightLabels: Record<keyof Weights, string> = {
+  urgency: '紧急度',
+  value: '价值',
+  cost: '成本（速赢）',
+};
 
 export function SettingsPage() {
   const { activeTab } = useUIStore();
+  const weights = useWeightsStore();
 
   const getBgColor = () => {
     switch (activeTab) {
@@ -107,6 +115,39 @@ export function SettingsPage() {
                   <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full" />
                 </div>
               </div>
+            </div>
+          </Card>
+
+          {/* 任务推荐权重 */}
+          <Card className="w-full p-6 rounded-2xl" style={{ backgroundColor: getCardBg() }}>
+            <h3 className={`font-zhuque text-2xl mb-4 ${getTextColor()}`}>任务推荐权重</h3>
+            <p className={`font-zhuque text-sm mb-4 ${getSecondaryTextColor()}`}>
+              点击左下角熊猫时，系统根据这三个维度加权评分推荐最优任务
+            </p>
+            <div className="space-y-5">
+              {(['urgency', 'value', 'cost'] as const).map((key) => (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`font-zhuque text-lg ${getSecondaryTextColor()}`}>
+                      {weightLabels[key]}
+                    </span>
+                    <span className={`font-zhuque text-sm ${getSecondaryTextColor()}`}>
+                      {Math.round(weights[key] * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(weights[key] * 100)}
+                    onChange={(e) => weights.setWeights({ [key]: parseInt(e.target.value) / 100 })}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #58A968 ${Math.round(weights[key] * 100)}%, #ddd ${Math.round(weights[key] * 100)}%)`,
+                    }}
+                  />
+                </div>
+              ))}
             </div>
           </Card>
 

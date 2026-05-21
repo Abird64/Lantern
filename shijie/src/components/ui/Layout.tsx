@@ -5,7 +5,6 @@ import { type ReactNode } from 'react';
 
 interface ContainerProps {
   children: ReactNode;
-  className?: string;
   maxWidth?: string;
   padding?: string;
 }
@@ -13,9 +12,8 @@ interface ContainerProps {
 /**
  * 主内容居中容器
  */
-export function Container({ 
-  children, 
-  className = '', 
+export function Container({
+  children,
   maxWidth = 'max-w-[1000px]',
   padding = 'px-8'
 }: ContainerProps) {

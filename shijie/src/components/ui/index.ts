@@ -6,6 +6,7 @@ export { Card } from './Card';
 export { Tab } from './Tab';
 export { CapsuleTabs } from './CapsuleTabs';
 export { NavBar } from './NavBar';
+export { LanternSvg } from './LanternSvg';
 export { Input, Textarea } from './Input';
 export { Container, Section, PageWrapper } from './Layout';
 
