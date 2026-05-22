@@ -94,7 +94,7 @@ Obsidian 的本地优先 + 离线数据理念
 
 **前端UI：**
 - 任务卡片列表（2列网格），五边形图标 + 标题 + 日期 + 优先级标签 + XP + 过期标记 + 标签
-- 5个筛选Tab：万象（全部进行中）、今辰（今日+过期）、圆满（已完成）、期许（未来）、迟暮（已过期）
+- 5个筛选Tab：全部（全部进行中）、今天（今日+过期）、已完成、进行中（未来）、已过期
 - **搜索框**：本地过滤 title/description/notes
 - **排序**：按创建时间/截止时间/优先级排序（下拉菜单）
 - **创建任务弹窗**：标题、截止时间、优先级；展开更多：计划开始、预估耗时、描述、标签、**属性加成（6维XP分配）**
@@ -171,26 +171,65 @@ Obsidian 的本地优先 + 离线数据理念
 | `src/pages/Skills/index.tsx` | 修为页面组件 |
 | `src/styles/theme.ts` | SKILL_COLORS + themes.skills |
 
-### 4. 时序（日程/日历）
+### 4. 日历（日程） — ⭐ 已完成
 
 #### 架构决策
 
 - 日历是统一视图，显示三类数据（不同颜色）：任务（自动同步）、课程（.ics导入）、独立事件（手动创建）
 - 带日期的任务自动出现在日历上，不需要手动添加按钮
-- 课程导入走 .ics 文件（MVP），用 WakeUp 等工具解析
-- 时间轴用整点，夜间 23:00-7:00 压缩显示
+- 课程导入走 .ics 文件，用 WakeUp 等工具导出
+- 时间轴用整点，夜间 0:00-7:00 压缩为 10% 高度
 - schedules 表和 tasks 表分开，字段差异大
+- 重复事件用 iCal RRULE，后端展开为实例，前端不处理 rrule 逻辑
+- 重复实例 ID 格式 `{base_id}_{YYYY-MM-DD}`，单次编辑用 exdate + 独立事件
 
-| 层级 | 项目 | 状态 | 说明 |
-|------|------|------|------|
-| 数据库 | schedules 表 | ✅ 完成 | 含 rrule, reminder 字段 |
-| 前端 UI | 周历网格 | ✅ 完成 | 静态mock, 筛选按钮 |
-| 前端 UI | 日程显示 | ❌ 未开始 | 无事件渲染 |
-| 前端 UI | 创建/编辑日程 | ❌ 未开始 | |
-| 后端 | schedule_repo.rs | ❌ 未开始 | CRUD + rrule展开 |
-| 后端 | schedule_commands.rs | ❌ 未开始 | Tauri命令 |
-| 前端 | scheduleService.ts | ❌ 未开始 | API封装 |
-| 前端 | scheduleStore.ts | ❌ 未开始 | Zustand状态管理 |
+#### 已实现功能
+
+**4种视图：**
+- **周视图**：真实日期 + 时间轴 + 事件色块 + 当前时间红线 + 重叠自动分栏 + 拖拽调整时间
+- **日视图**：单天详细时间轴 + 重叠分栏 + 拖拽调整时间 + 返回按钮（根据来源返回月/周视图）
+- **月视图**：7×6 网格 + 事件预览 + 点击某天进日视图 + 左右翻月
+- **近期视图**：从当前时刻起算未来 30 天 + 按日分组 + 无翻页
+
+**事件管理：**
+- 创建：点击空白时间段 / "+" 按钮，表单含标题、时间、分类、重复规则、地点、描述
+- 查看/编辑：点击事件色块弹出详情弹窗，支持所有字段修改
+- 删除：支持删除确认
+- 重复事件单次编辑：检测实例 ID，弹出范围选择（只改这一次 / 改所有）
+- 拖拽调整：30 分钟吸附 + 实时时间指示线（周视图 + 日视图）
+
+**数据导入/同步：**
+- .ics 文件导入：前端解析 iCal + 后端批量写入 + UID 去重
+- 任务同步：tasks.scheduled_at 自动出现在日历，虚线边框只读
+- 系统通知：浏览器 Notification，事件前 10 分钟提醒
+
+**筛选：** 全部 / 课表 / 学习 / 娱乐
+
+**后端（Rust）：**
+- 7 个 Tauri Commands：create/get/list_range/update/delete/add_exdate/import_ics_events
+- rrule 展开支持 DAILY / WEEKLY / MONTHLY + UNTIL + COUNT + exdates
+- 范围查询同时合并 tasks 表中 scheduled_at 在范围内的未完成任务
+
+#### 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `src-tauri/src/db/repositories/schedule_repo.rs` | 日程仓库（CRUD + rrule 展开 + 任务合并 + add_exdate） |
+| `src-tauri/src/commands/schedule_commands.rs` | 7个Tauri命令 |
+| `src/services/scheduleService.ts` | 前端API封装（含 addExdate, importIcsEvents） |
+| `src/stores/scheduleStore.ts` | Zustand状态管理 |
+| `src/types/schedule.ts` | TypeScript类型定义 |
+| `src/utils/icsParser.ts` | .ics 文件解析器 |
+| `src/services/notificationService.ts` | 浏览器通知检测 |
+| `src/components/schedule/WeekView.tsx` | 周视图 |
+| `src/components/schedule/DayView.tsx` | 日视图 |
+| `src/components/schedule/MonthView.tsx` | 月视图 |
+| `src/components/schedule/AgendaView.tsx` | 近期视图 |
+| `src/components/schedule/EventBlock.tsx` | 事件色块（拖拽 + task_sync 虚线） |
+| `src/components/schedule/EventForm.tsx` | 创建弹窗（含重复规则选择器） |
+| `src/components/schedule/EventDetail.tsx` | 详情弹窗（含重复事件单次编辑） |
+| `src/components/schedule/DateNavigator.tsx` | 日期导航 |
+| `src/pages/Schedule/index.tsx` | 页面入口（4视图切换 + 筛选 + 全部交互） |
 
 ### 5. 尘笺（日记） — ⭐ 已实现
 
@@ -229,18 +268,28 @@ Obsidian 的本地优先 + 离线数据理念
 | `src/components/diary/AiDiaryPanel.tsx` | 提灯的日记面板 |
 | `src/pages/Diary/index.tsx` | 日记页面组件 |
 
-### 6. 相识（人脉）
+### 6. 相识（人脉） — ⭐ 已实现
 
-| 层级 | 项目 | 状态 | 说明 |
-|------|------|------|------|
-| 数据库 | contacts + 关联表 | ✅ 完成 | contacts, diary_contacts, task_contacts |
-| 前端 UI | 联系人卡片 | ✅ 完成 | 分类筛选Tab, mock数据展示 |
-| 前端 UI | CRUD交互 | ❌ 未开始 | 创建/编辑/删除联系人 |
-| 前端 UI | 关联日记/任务 | ❌ 未开始 | |
-| 后端 | contact_repo.rs | ❌ 未开始 | CRUD + 关联管理 |
-| 后端 | contact_commands.rs | ❌ 未开始 | Tauri命令 |
-| 前端 | contactService.ts | ❌ 未开始 | API封装 |
-| 前端 | contactStore.ts | ❌ 未开始 | Zustand状态管理 |
+#### 已实现功能
+
+- **后端**：contact_repo.rs（CRUD + 搜索 + 分组筛选）+ contact_commands.rs（6个Tauri命令）
+- **前端**：contactService.ts + contactStore.ts（Zustand）
+- **联系人卡片**：2列网格，头像色板（按分组固定颜色），姓名 + 分组标签 + 联系方式预览
+- **分类筛选**：胶囊标签（全部/家人/朋友/同学/同事/老师）
+- **创建/编辑/删除**：弹窗表单，含姓名、昵称（多昵称）、分组、生日、联系方式（多条）、标签、描述
+- **AI 建议**：左下角灯笼按钮打开 AI 建议面板（占位，等 AI 接入）
+- **搜索**：按姓名/昵称/描述搜索
+
+#### 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `src-tauri/src/db/repositories/contact_repo.rs` | 人脉仓库 |
+| `src-tauri/src/commands/contact_commands.rs` | 6个Tauri命令 |
+| `src/services/contactService.ts` | 前端API封装 |
+| `src/stores/contactStore.ts` | Zustand状态管理 |
+| `src/types/contact.ts` | TypeScript类型定义 |
+| `src/pages/Relations/index.tsx` | 人脉页面组件 |
 
 ### 7. 设置
 
@@ -264,9 +313,9 @@ Obsidian 的本地优先 + 离线数据理念
 按以下顺序，逐个页面完成 后端repo → commands → 前端service → store → 页面联调：
 
 1. ~~**修为（技能）**~~ — ✅ 已完成
-2. ~~**尘笺（日记）**~~ — ✅ 已完成（journal_repo + journal_commands + 前端联调）
-3. **相识（人脉）** — `contact_repo` + `contact_commands` → 前端联调
-4. **时序（日历）** — `schedule_repo` + `schedule_commands` → 前端联调 + .ics导入
+2. ~~**尘笺（日记）**~~ — ✅ 已完成
+3. ~~**相识（人脉）**~~ — ✅ 已完成
+4. ~~**日历（日程）**~~ — ✅ 已完成（含 rrule 展开 + .ics 导入 + 拖拽 + 通知 + 重复事件单次编辑）
 5. **设置** — `setting_repo` + `config_commands` → 前端联调
 6. **提灯（AI）** — AI Provider + 工具层 + 对话联调
 
@@ -280,15 +329,15 @@ src-tauri/src/
 │   ├── skill_repo.rs      ✅ 已完成
 │   ├── task_repo.rs       ✅ 已完成（含 uncomplete_task）
 │   ├── journal_repo.rs    ✅ 已完成（DB CRUD + .md 文件读写）
-│   ├── schedule_repo.rs   ❌
-│   ├── contact_repo.rs    ❌
+│   ├── schedule_repo.rs   ✅ 已完成（CRUD + rrule 展开 + 任务合并 + add_exdate）
+│   ├── contact_repo.rs    ✅ 已完成（CRUD + 搜索 + 分组）
 │   └── setting_repo.rs    ❌
 ├── commands/
 │   ├── task_commands.rs      ✅ 已完成（8个命令）
 │   ├── skill_commands.rs     ✅ 已完成（3个命令）
 │   ├── journal_commands.rs   ✅ 已完成（5个命令）
-│   ├── schedule_commands.rs  ❌
-│   ├── contact_commands.rs   ❌
+│   ├── schedule_commands.rs  ✅ 已完成（7个命令）
+│   ├── contact_commands.rs   ✅ 已完成（6个命令）
 │   └── config_commands.rs    ❌
 ├── ai/                       ❌ 整个目录
 │   ├── tools.rs
@@ -331,13 +380,14 @@ src-tauri/src/
 | 项目 | 优先级 | 说明 |
 |------|--------|------|
 | ~~日记后端打通~~ | ✅ 完成 | journal_repo + journal_commands + 前端联调 |
+| ~~相识后端打通~~ | ✅ 完成 | contact_repo + contact_commands + CRUD + 分类筛选 |
+| ~~日历功能~~ | ✅ 完成 | 4视图 + rrule + .ics导入 + 拖拽 + 通知 + 重复事件单次编辑 |
 | 日记 XP 结算 | 当前 | 日省按钮触发，默认值先打通链路，后续 AI 判断属性分配 |
 | AI XP 分配提示词 | 日记XP之后 | AI 根据日记内容判断给哪些属性加多少 XP，提示词可配置 |
-| 相识后端打通 | XP之后 | contact_repo + contact_commands |
-| 日历后端 | 相识之后 | schedule_repo + rrule 解析 + .ics 导入 |
+| 设置后端 | 下一步 | setting_repo + config_commands → 前端联调 |
+| 提灯 AI 对话 | 最后 | AI Provider + 工具层 + 对话联调 |
 | CLI 化 | 远期 | 暴露命令行入口供外部 AI Agent 调用 |
 | 插件系统 | 远期 | 可扩展的模块/工具加载机制 |
-| 课程表 .ics 导入 | 日历时 | 支持从 WakeUp 等工具导入 iCal 文件 |
 
 ### AI 健壮性规划（待实现）
 
@@ -351,4 +401,19 @@ src-tauri/src/
 
 ---
 
-*最后更新: 2026-05-22*
+---
+
+## 七、全局优化（2026-05-23）
+
+| 项目 | 说明 |
+|------|------|
+| **页面布局重构** | `min-h-screen` → `h-screen overflow-hidden`，只有内容区滚动，导航栏和控制区固定 |
+| **全局禁止文字选中** | `user-select: none`，仅输入框例外，桌面应用应有的样子 |
+| **导航标签直白化** | 提灯→助手、尘事→任务、时序→日历、尘笺→日记 |
+| **任务分类直白化** | 万象→全部、今辰→今天、圆满→已完成、期许→进行中、迟暮→已过期 |
+| **人脉分组直白化** | 至亲→家人、知己→朋友、同窗→同学、共事→同事、恩师→老师 |
+| **数据库迁移** | 人脉分组名同步更新（UPDATE contacts SET group_name = '家人' WHERE group_name = '至亲' 等） |
+
+---
+
+*最后更新: 2026-05-23*
