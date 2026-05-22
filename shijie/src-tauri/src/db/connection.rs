@@ -1,4 +1,5 @@
 use rusqlite::Connection;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -8,7 +9,11 @@ pub struct DbState {
     pub conn: Mutex<Connection>,
 }
 
-pub fn init_db(app_handle: &tauri::AppHandle) -> Result<DbState, String> {
+pub struct AppDataState {
+    pub dir: PathBuf,
+}
+
+pub fn init_db(app_handle: &tauri::AppHandle) -> Result<(DbState, AppDataState), String> {
     let mut db_path = app_handle
         .path()
         .app_data_dir()
@@ -36,7 +41,12 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<DbState, String> {
 
     log::info!("Database initialized at: {:?}", db_path);
 
-    Ok(DbState {
-        conn: Mutex::new(conn),
-    })
+    Ok((
+        DbState {
+            conn: Mutex::new(conn),
+        },
+        AppDataState {
+            dir: db_path.parent().unwrap_or(&db_path).to_path_buf(),
+        },
+    ))
 }

@@ -16,8 +16,9 @@ pub fn run() {
             }
 
             // 初始化数据库
-            let db_state = db::connection::init_db(app.handle())?;
+            let (db_state, app_data_state) = db::connection::init_db(app.handle())?;
             app.manage(db_state);
+            app.manage(app_data_state);
 
             Ok(())
         })
@@ -33,6 +34,11 @@ pub fn run() {
             commands::skill_commands::list_skills,
             commands::skill_commands::get_task_skills,
             commands::skill_commands::set_task_skills,
+            commands::journal_commands::get_journal_by_date,
+            commands::journal_commands::save_journal,
+            commands::journal_commands::get_timeline,
+            commands::journal_commands::get_ai_diary,
+            commands::journal_commands::save_ai_diary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

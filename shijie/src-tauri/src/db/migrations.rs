@@ -153,6 +153,14 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER DEFAULT 0",
         [],
     );
+    let _ = conn.execute(
+        "ALTER TABLE journals ADD COLUMN entry_type TEXT DEFAULT 'user'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE journals ADD COLUMN tags TEXT",
+        [],
+    );
 
     log::info!("Database migrations completed");
     Ok(())

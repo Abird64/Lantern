@@ -192,19 +192,42 @@ Obsidian 的本地优先 + 离线数据理念
 | 前端 | scheduleService.ts | ❌ 未开始 | API封装 |
 | 前端 | scheduleStore.ts | ❌ 未开始 | Zustand状态管理 |
 
-### 5. 尘笺（日记）
+### 5. 尘笺（日记） — ⭐ 已实现
 
-| 层级 | 项目 | 状态 | 说明 |
-|------|------|------|------|
-| 数据库 | journals 表 | ✅ 完成 | 元数据, 含 mood, word_count |
-| 前端 UI | 编辑器 | ✅ 完成 | 静态textarea + 日期 + 日省按钮 |
-| 前端 UI | 日记列表 | ❌ 未开始 | 无列表/搜索 |
-| 前端 UI | 心情选择 | ❌ 未开始 | |
-| 后端 | journal_repo.rs | ❌ 未开始 | CRUD |
-| 后端 | journal_commands.rs | ❌ 未开始 | Tauri命令 |
-| 后端 | journal_fs.rs | ❌ 未开始 | .md文件读写 |
-| 前端 | journalService.ts | ❌ 未开始 | API封装 |
-| 前端 | journalStore.ts | ❌ 未开始 | Zustand状态管理 |
+#### 设计理念
+- 日记正文用 `.md` 文件存储，DB 只存元数据索引（数据开放）
+- 每天一个文件：`journals/YYYY/MM/YYYY-MM-DD.md`
+- 文件含 YAML frontmatter（date, mood, tags, word_count, type）作为 AI 检索坐标
+- 用户输入 → 1.5s debounce → 同时写 .md 文件 + 更新 SQLite 元数据
+- AI 旁白（"提灯的日记"）存为独立文件 `YYYY-MM-DD-ai.md`，不污染用户日记
+- 日省按钮 = 生成入口（触发 AI 写旁白，当前占位）
+- 日晷图标 = 查看入口（打开"提灯的日记"面板，纯阅读）
+
+#### 已实现功能
+- **后端**：journal_repo.rs（DB CRUD + .md 文件读写含 frontmatter 解析）+ journal_commands.rs（5个Tauri命令）
+- **前端**：journalService.ts + journalStore.ts（Zustand，1.5s debounce 自动保存）
+- **时间线**：点击日期胶囊弹出月历视图，有日记的日期显示圆点标记，支持月份切换
+- **AI 尘笺面板**：日晷图标点击从右滑入，展示提灯的日记（占位，等 AI 接入）
+- **日省按钮**：占位提示（触发 AI 生成旁白，未来接入）
+- **自动保存**：用户输入 1.5s 后自动写文件 + 更新 DB，切换日期/卸载时强制保存
+
+#### 数据库改动
+- journals 表新增 `entry_type TEXT DEFAULT 'user'`（区分用户日记 / AI 旁白）
+- journals 表新增 `tags TEXT`（JSON 数组，预留）
+
+#### 相关文件
+
+| 文件 | 说明 |
+|------|------|
+| `src-tauri/src/db/repositories/journal_repo.rs` | 日记仓库（DB + 文件 I/O） |
+| `src-tauri/src/commands/journal_commands.rs` | 5个Tauri命令 |
+| `src-tauri/src/db/connection.rs` | 新增 AppDataState |
+| `src/types/journal.ts` | TypeScript类型定义 |
+| `src/services/journalService.ts` | 前端API封装 |
+| `src/stores/journalStore.ts` | Zustand状态管理（自动保存） |
+| `src/components/diary/TimelineDropdown.tsx` | 时间线月历组件 |
+| `src/components/diary/AiDiaryPanel.tsx` | 提灯的日记面板 |
+| `src/pages/Diary/index.tsx` | 日记页面组件 |
 
 ### 6. 相识（人脉）
 
@@ -241,7 +264,7 @@ Obsidian 的本地优先 + 离线数据理念
 按以下顺序，逐个页面完成 后端repo → commands → 前端service → store → 页面联调：
 
 1. ~~**修为（技能）**~~ — ✅ 已完成
-2. **尘笺（日记）** — `journal_repo` + `journal_fs` + `journal_commands` → 前端联调
+2. ~~**尘笺（日记）**~~ — ✅ 已完成（journal_repo + journal_commands + 前端联调）
 3. **相识（人脉）** — `contact_repo` + `contact_commands` → 前端联调
 4. **时序（日历）** — `schedule_repo` + `schedule_commands` → 前端联调 + .ics导入
 5. **设置** — `setting_repo` + `config_commands` → 前端联调
@@ -256,14 +279,14 @@ src-tauri/src/
 ├── db/repositories/
 │   ├── skill_repo.rs      ✅ 已完成
 │   ├── task_repo.rs       ✅ 已完成（含 uncomplete_task）
-│   ├── journal_repo.rs    ❌
+│   ├── journal_repo.rs    ✅ 已完成（DB CRUD + .md 文件读写）
 │   ├── schedule_repo.rs   ❌
 │   ├── contact_repo.rs    ❌
 │   └── setting_repo.rs    ❌
 ├── commands/
 │   ├── task_commands.rs      ✅ 已完成（8个命令）
 │   ├── skill_commands.rs     ✅ 已完成（3个命令）
-│   ├── journal_commands.rs   ❌
+│   ├── journal_commands.rs   ✅ 已完成（5个命令）
 │   ├── schedule_commands.rs  ❌
 │   ├── contact_commands.rs   ❌
 │   └── config_commands.rs    ❌
@@ -272,8 +295,7 @@ src-tauri/src/
 │   ├── tool_executor.rs
 │   ├── client.rs
 │   └── prompts.rs
-└── fs/
-    └── journal_fs.rs         ❌
+└── fs/                       （journal_fs 合并到 journal_repo.rs）
 ```
 
 ---
@@ -308,9 +330,9 @@ src-tauri/src/
 
 | 项目 | 优先级 | 说明 |
 |------|--------|------|
-| 日记后端打通 | 下一步 | journal_repo + journal_fs + journal_commands |
+| ~~日记后端打通~~ | ✅ 完成 | journal_repo + journal_commands + 前端联调 |
 | 日记日醒加 XP | 日记完成后 | 创建虚拟任务走 complete_task 流程 |
-| 相识后端打通 | 日记之后 | contact_repo + contact_commands |
+| 相识后端打通 | 下一步 | contact_repo + contact_commands |
 | 日历后端 | 相识之后 | schedule_repo + rrule 解析 + .ics 导入 |
 | CLI 化 | 远期 | 暴露命令行入口供外部 AI Agent 调用 |
 | 插件系统 | 远期 | 可扩展的模块/工具加载机制 |
