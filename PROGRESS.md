@@ -56,16 +56,69 @@ Obsidian 的本地优先 + 离线数据理念
 
 ## 二、页面实现进度
 
-### 1. 提灯（首页/AI 对话）
+### 1. 提灯（首页/AI 对话） — 🔥 进行中
 
 | 层级 | 项目 | 状态 | 说明 |
 |------|------|------|------|
-| 前端 UI | 聊天界面 | ✅ 完成 | 输入框、发送按钮、历史侧栏、灯笼SVG |
-| 前端 UI | 历史面板 | ✅ 完成 | 滑入动画 |
-| 后端 | AI 对话服务 | ❌ 未开始 | 需实现 ai_conversations + ai_messages |
-| 后端 | AI Provider 接入 | ❌ 未开始 | 支持 OpenAI/Anthropic/DeepSeek/Ollama |
-| 后端 | AI 工具层 | ❌ 未开始 | 6组工具定义 (tasks/skills/journals/schedules/contacts/config) |
-| 前端 | 对话功能联调 | ❌ 未开始 | 发送消息、展示回复、工具调用结果展示 |
+| 前端 UI | 聊天界面 | ✅ 完成 | 消息气泡 + 对话列表 + Markdown 渲染 + react-markdown |
+| 前端 UI | 历史面板 | ✅ 完成 | 左侧对话列表（新建/切换/删除）+ 首轮后自动生成标题 |
+| 前端 UI | 操作确认卡片 | ✅ 完成 | ToolCallCard.tsx，4色卡片系统（绿/黄绿/红/蓝）+ 确认/取消/修改 |
+| 前端 UI | 复制/中断按钮 | ✅ 完成 | hover 显示复制按钮 + 发送中显示中断按钮 |
+| 后端 | AI 数据库 | ✅ 完成 | ai_conversations + ai_messages（含 reasoning_content 字段） |
+| 后端 | AI Provider 接入 | ✅ 完成 | ai/client.rs，OpenAI 兼容格式（DeepSeek/OpenAI/Ollama） |
+| 后端 | AI 系统提示词 | ✅ 完成 | prompts.rs，提灯角色 + 能力边界 + 行为规则 + 当前时间注入 |
+| 后端 | AI 工具定义 | ✅ 完成 | tools.rs，4个工具：create_task / complete_task / delete_task / search_tasks |
+| 后端 | 工具执行调度 | ✅ 完成 | tool_executor.rs，模糊搜索 + 0/1/多条匹配处理 |
+| 后端 | AI 命令 | ✅ 完成 | ai_commands.rs，9个命令（CRUD + 发送 + 执行/取消/修改工具调用） |
+| 后端 | 标题自动生成 | ✅ 完成 | 首轮对话后调 AI 生成 10 字内标题，更新对话列表 |
+| 后端 | AI 记忆系统 | ❌ 未开始 | save_memory / list_memories，设置页管理 |
+| 后端 | update_task 工具 | ❌ 未开始 | 修改任务卡片 |
+| 后端 | create_schedule 工具 | ❌ 未开始 | 创建日程卡片 |
+
+#### AI 工具层设计（待实现）
+
+**System 提示词要素：**
+- 角色：提灯 — 个人人生管理助手
+- 能力：任务/日程/日记/人脉/技能管理
+- 语气：温暖但不啰嗦，像靠谱的朋友
+- 行为：模糊意图先理解再行动，操作数据必须调用工具，回复简洁
+
+**工具清单（6组，暴露给 AI 的接口）：**
+
+| 组 | 工具 | 说明 |
+|---|------|------|
+| 任务 | create_task / search_tasks / complete_task / delete_task / ~~list_tasks~~ / ~~update_task~~ | 4个已实现，update_task 待做 |
+| 日程 | create_schedule / list_schedules_in_range / update_schedule / delete_schedule | 待实现 |
+| 日记 | get_journal_by_date / save_journal / get_timeline | 待实现 |
+| 人脉 | create_contact / list_contacts / search_contacts / update_contact / delete_contact | 待实现 |
+| 技能 | list_skills / get_task_skills | 只读，XP 由 complete_task 自动触发 |
+| 记忆 | save_memory / list_memories / delete_memory | AI 记忆系统 |
+
+**操作确认卡片系统：**
+
+AI 返回消息时可附带 `tool_calls` JSON，前端渲染操作卡片：
+
+```
+AI 返回: { content: "帮你创建任务", tool_calls: [{ action: "create_task", params: {...} }] }
+    ↓
+前端渲染卡片：任务标题/时间/优先级 + [确认] [修改] [取消]
+    ↓
+用户确认 → 前端调用 Tauri 命令 → 结果回传 AI
+```
+
+卡片类型：
+- **创建类**：表单预览 + 确认（create_task / create_schedule / create_contact）
+- **修改类**：变更对比 + 确认（update_task / update_schedule / update_contact）
+- **执行类**：简单确认（complete_task / delete_task / complete_diary）
+
+**AI 记忆系统：**
+
+| 类型 | 存储 | 谁写 | 例子 |
+|------|------|------|------|
+| 结构化记忆 | settings 表 key=`memory.*` | AI 通过工具写 | `memory.schedule` = "周一到周五 8:00-17:00 有课" |
+| 用户管理 | 设置页面展示 | 用户可编辑/删除 | 查看 AI 记了啥，不满意就改 |
+
+记忆工具：save_memory(key, value) / list_memories() / delete_memory(key)
 
 ### 2. 尘事（任务） — ⭐ 已打磨完成
 
@@ -156,7 +209,7 @@ Obsidian 的本地优先 + 离线数据理念
 
 - 完成任务 → `skill_events` 写入正值 + `skills.total_xp` 增加
 - 取消完成 → `skill_events` 写入负值 + `skills.total_xp` 回退
-- 日记日醒 → 创建虚拟任务，走 complete_task 流程（待实现）
+- 日记日省 → 创建虚拟任务，走 complete_task 流程（待实现）
 - 日历事件 → **不加 XP**
 
 #### 相关文件
@@ -297,12 +350,14 @@ Obsidian 的本地优先 + 离线数据理念
 |------|------|------|------|
 | 前端 UI | 开关/滑块 | ✅ 完成 | 暗色模式、提醒开关（未接状态） |
 | 前端 UI | 推荐权重 | ✅ 完成 | 紧急度/价值/成本滑块 → localStorage |
+| 前端 UI | AI 设置区块 | ✅ 完成 | API地址/Key/模型/性格配置，持久化到后端 |
 | 前端 UI | 导出/清除数据 | ⚠️ 按钮存在 | 无实际逻辑 |
 | 数据库 | settings 表 | ✅ 完成 | KV存储, 建表完成 |
-| 后端 | setting_repo.rs | ❌ 未开始 | get/set 操作 |
-| 后端 | config_commands.rs | ❌ 未开始 | Tauri命令 |
-| 前端 | settingService.ts | ❌ 未开始 | API封装 |
-| 前端 | 设置持久化 | ❌ 未开始 | 接入后端替代localStorage |
+| 后端 | setting_repo.rs | ✅ 完成 | get/set/list/delete 操作 |
+| 后端 | config_commands.rs | ✅ 完成 | 4个Tauri命令 |
+| 前端 | settingService.ts | ✅ 完成 | API封装 |
+| 前端 | settingStore.ts | ✅ 完成 | Zustand状态管理 + 启动时从后端加载 |
+| 前端 | 设置持久化 | ✅ 完成 | 接入后端替代localStorage |
 
 ---
 
@@ -321,7 +376,7 @@ Obsidian 的本地优先 + 离线数据理念
 
 ---
 
-## 四、后端文件清单（待创建）
+## 四、后端文件清单
 
 ```
 src-tauri/src/
@@ -331,19 +386,21 @@ src-tauri/src/
 │   ├── journal_repo.rs    ✅ 已完成（DB CRUD + .md 文件读写）
 │   ├── schedule_repo.rs   ✅ 已完成（CRUD + rrule 展开 + 任务合并 + add_exdate）
 │   ├── contact_repo.rs    ✅ 已完成（CRUD + 搜索 + 分组）
-│   └── setting_repo.rs    ❌
+│   ├── setting_repo.rs    ✅ 已完成（get/set/list/delete）
+│   └── ai_repo.rs         ✅ 已完成（对话/消息 CRUD + reasoning_content）
 ├── commands/
 │   ├── task_commands.rs      ✅ 已完成（8个命令）
 │   ├── skill_commands.rs     ✅ 已完成（3个命令）
 │   ├── journal_commands.rs   ✅ 已完成（5个命令）
 │   ├── schedule_commands.rs  ✅ 已完成（7个命令）
 │   ├── contact_commands.rs   ✅ 已完成（6个命令）
-│   └── config_commands.rs    ❌
-├── ai/                       ❌ 整个目录
-│   ├── tools.rs
-│   ├── tool_executor.rs
-│   ├── client.rs
-│   └── prompts.rs
+│   ├── config_commands.rs    ✅ 已完成（4个命令）
+│   └── ai_commands.rs        ✅ 已完成（9个命令）
+├── ai/                       ✅ 已完成
+│   ├── tools.rs              ✅ 已完成（4个工具定义）
+│   ├── tool_executor.rs      ✅ 已完成（工具执行调度 + 模糊匹配）
+│   ├── client.rs             ✅ 已完成（OpenAI兼容 + thinking模式 + 标题生成）
+│   └── prompts.rs            ✅ 已完成（系统提示词 + 时间注入 + 用户性格）
 └── fs/                       （journal_fs 合并到 journal_repo.rs）
 ```
 
@@ -382,10 +439,17 @@ src-tauri/src/
 | ~~日记后端打通~~ | ✅ 完成 | journal_repo + journal_commands + 前端联调 |
 | ~~相识后端打通~~ | ✅ 完成 | contact_repo + contact_commands + CRUD + 分类筛选 |
 | ~~日历功能~~ | ✅ 完成 | 4视图 + rrule + .ics导入 + 拖拽 + 通知 + 重复事件单次编辑 |
-| 日记 XP 结算 | 当前 | 日省按钮触发，默认值先打通链路，后续 AI 判断属性分配 |
-| AI XP 分配提示词 | 日记XP之后 | AI 根据日记内容判断给哪些属性加多少 XP，提示词可配置 |
-| 设置后端 | 下一步 | setting_repo + config_commands → 前端联调 |
-| 提灯 AI 对话 | 最后 | AI Provider + 工具层 + 对话联调 |
+| ~~日记 XP 结算~~ | ✅ 完成 | 日省按钮触发，6维各+1 XP |
+| ~~设置后端~~ | ✅ 完成 | setting_repo + config_commands + AI设置区块 |
+| ~~AI 基础对话~~ | ✅ 完成 | ai_repo + ai_client + 对话列表 + 消息气泡 + Markdown渲染 |
+| ~~AI 系统提示词~~ | ✅ 完成 | prompts.rs: 提灯角色 + 能力 + 规则 + 时间注入 + 性格 |
+| ~~AI 工具层 + 确认卡片~~ | ✅ 完成 | 4工具 + tool_executor + 4色卡片（含修改按钮） |
+| AI 自动标题 | ✅ 完成 | 首轮对话后自动生成10字内标题 |
+| AI 修改卡片 | ✅ 完成 | "修改"按钮 → 输入反馈 → AI 重新生成 tool_calls |
+| AI 更多工具 | 下一步 | update_task / create_schedule / 日记/人脉 工具 |
+| AI 记忆系统 | 下一步 | save_memory / list_memories，设置页管理 |
+| AI XP 分配提示词 | 记忆之后 | AI 根据日记内容判断给哪些属性加多少 XP |
+| 主题系统 | 远期 | 预设主题 + 自定义配色 + 多彩主题 |
 | CLI 化 | 远期 | 暴露命令行入口供外部 AI Agent 调用 |
 | 插件系统 | 远期 | 可扩展的模块/工具加载机制 |
 
@@ -416,4 +480,4 @@ src-tauri/src/
 
 ---
 
-*最后更新: 2026-05-23*
+*最后更新: 2026-05-22*

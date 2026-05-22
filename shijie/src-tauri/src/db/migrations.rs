@@ -133,6 +133,26 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
             updated_at      TEXT NOT NULL
         );
 
+        -- AI 对话表
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL DEFAULT '新对话',
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
+
+        -- AI 消息表
+        CREATE TABLE IF NOT EXISTS ai_messages (
+            id              TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            role            TEXT NOT NULL,
+            content         TEXT,
+            tool_calls      TEXT,
+            tool_call_id    TEXT,
+            created_at      TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+        );
+
         -- 索引
         CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
         CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
@@ -144,6 +164,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_journals_date ON journals(journal_date);
         CREATE INDEX IF NOT EXISTS idx_schedules_start ON schedules(start_at);
         CREATE INDEX IF NOT EXISTS idx_contacts_group ON contacts(group_name);
+        CREATE INDEX IF NOT EXISTS idx_ai_messages_conv ON ai_messages(conversation_id);
         ",
     )
     .map_err(|e| format!("Migration failed: {}", e))?;
@@ -181,6 +202,12 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
     );
     let _ = conn.execute(
         "ALTER TABLE schedules ADD COLUMN exdates TEXT",
+        [],
+    );
+
+    // 增量迁移：ai_messages 加 reasoning_content（DeepSeek thinking 模式）
+    let _ = conn.execute(
+        "ALTER TABLE ai_messages ADD COLUMN reasoning_content TEXT",
         [],
     );
 

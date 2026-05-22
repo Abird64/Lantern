@@ -1,3 +1,4 @@
+mod ai;
 mod db;
 mod commands;
 
@@ -53,6 +54,19 @@ pub fn run() {
             commands::schedule_commands::delete_schedule,
             commands::schedule_commands::add_exdate,
             commands::schedule_commands::import_ics_events,
+            commands::config_commands::get_setting,
+            commands::config_commands::set_setting,
+            commands::config_commands::list_settings,
+            commands::config_commands::delete_setting,
+            commands::ai_commands::create_conversation,
+            commands::ai_commands::list_conversations,
+            commands::ai_commands::delete_conversation,
+            commands::ai_commands::rename_conversation,
+            commands::ai_commands::list_messages,
+            commands::ai_commands::send_message,
+            commands::ai_commands::execute_tool_calls,
+            commands::ai_commands::cancel_tool_calls,
+            commands::ai_commands::modify_tool_calls,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

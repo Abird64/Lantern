@@ -351,7 +351,7 @@ pub fn complete_diary(
     conn: &mut Connection,
     date: &str,
 ) -> Result<super::task_repo::CompleteResult, String> {
-    let task_title = format!("{} 日醒", date);
+    let task_title = format!("{} 日省", date);
 
     // 检查是否已经结算过（虚拟任务已完成）
     {
