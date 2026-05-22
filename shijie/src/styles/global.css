@@ -7,6 +7,17 @@ html, body, #root {
   width: 100%;
 }
 
+/* 桌面应用：全局禁止文字选中/拖拽，仅保留输入框可选 */
+*, *::before, *::after {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* 拾阶 - 古典诗意主题 */
 @theme {
   /* 导航栏颜色 */

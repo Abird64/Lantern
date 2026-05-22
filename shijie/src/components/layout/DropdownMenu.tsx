@@ -2,10 +2,10 @@ import { useUIStore } from '@/stores/uiStore';
 import { Home, ListTodo, Calendar, BookOpen, Users, Sparkles, Settings } from 'lucide-react';
 
 const tabs = [
-  { id: 'lantern', label: '提灯', icon: Home },
-  { id: 'tasks', label: '尘事', icon: ListTodo },
-  { id: 'schedule', label: '时序', icon: Calendar },
-  { id: 'diary', label: '尘笺', icon: BookOpen },
+  { id: 'lantern', label: '助手', icon: Home },
+  { id: 'tasks', label: '任务', icon: ListTodo },
+  { id: 'schedule', label: '日历', icon: Calendar },
+  { id: 'diary', label: '日记', icon: BookOpen },
   { id: 'relations', label: '相识', icon: Users },
   { id: 'skills', label: '修为', icon: Sparkles },
   { id: 'settings', label: '设置', icon: Settings },

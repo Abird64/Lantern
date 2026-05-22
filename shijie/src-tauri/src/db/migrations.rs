@@ -162,6 +162,35 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         [],
     );
 
+    // 增量迁移：schedules 表新增字段
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN location TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN source_type TEXT DEFAULT 'manual'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN source_id TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN category TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN exdates TEXT",
+        [],
+    );
+
+    // 增量迁移：人脉分组名从古风改为直白
+    let _ = conn.execute("UPDATE contacts SET group_name = '家人' WHERE group_name = '至亲'", []);
+    let _ = conn.execute("UPDATE contacts SET group_name = '朋友' WHERE group_name = '知己'", []);
+    let _ = conn.execute("UPDATE contacts SET group_name = '同学' WHERE group_name = '同窗'", []);
+    let _ = conn.execute("UPDATE contacts SET group_name = '同事' WHERE group_name = '共事'", []);
+    let _ = conn.execute("UPDATE contacts SET group_name = '老师' WHERE group_name = '恩师'", []);
+
     log::info!("Database migrations completed");
     Ok(())
 }

@@ -1,12 +1,30 @@
 import { useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export function WindowControls() {
   const [hovered, setHovered] = useState<number | null>(null);
 
+  const appWindow = getCurrentWindow();
+
   const buttons = [
-    { id: 0, color: '#28C840', label: '最小化' },  // 绿色 - 最小化
-    { id: 1, color: '#FEBC2E', label: '恢复' },   // 黄色 - 恢复
-    { id: 2, color: '#FF5F57', label: '关闭' },   // 红色 - 关闭
+    {
+      id: 0,
+      color: '#28C840',
+      label: '最小化',
+      action: () => appWindow.minimize(),
+    },
+    {
+      id: 1,
+      color: '#FEBC2E',
+      label: '恢复',
+      action: () => appWindow.toggleMaximize(),
+    },
+    {
+      id: 2,
+      color: '#FF5F57',
+      label: '关闭',
+      action: () => appWindow.close(),
+    },
   ];
 
   return (
@@ -21,6 +39,7 @@ export function WindowControls() {
           }}
           onMouseEnter={() => setHovered(btn.id)}
           onMouseLeave={() => setHovered(null)}
+          onClick={btn.action}
         >
           {/* 悬停时显示图标 */}
           {hovered === btn.id && (

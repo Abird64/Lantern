@@ -9,11 +9,11 @@ import { recommendTask, scoreTask } from '@/utils/scoring';
 import type { Task } from '@/types/task';
 
 const categories = [
-  { id: 'wanxiang', label: '万象' },
-  { id: 'jinchen', label: '今辰' },
-  { id: 'yuanyuan', label: '圆满' },
-  { id: 'qixu', label: '期许' },
-  { id: 'chimu', label: '迟暮' },
+  { id: 'wanxiang', label: '全部' },
+  { id: 'jinchen', label: '今天' },
+  { id: 'yuanyuan', label: '已完成' },
+  { id: 'qixu', label: '进行中' },
+  { id: 'chimu', label: '已过期' },
 ];
 
 const theme = themes.tasks;
@@ -403,7 +403,7 @@ export function TasksPage() {
 
   return (
     <div
-      className="min-h-screen px-4 md:px-6 lg:px-8 relative flex flex-col"
+      className="h-screen px-4 md:px-6 lg:px-8 relative flex flex-col overflow-hidden"
       style={{ backgroundColor: theme.bg }}
     >
       {/* 网格背景 */}
@@ -420,15 +420,13 @@ export function TasksPage() {
 
       {/* 顶部导航栏 */}
       <NavBar
-        title="尘事"
+        title="任务"
         navColor={theme.nav}
         quote="苔痕上阶绿，草色入帘青"
       />
 
-      {/* 主内容 */}
-      <div className="flex-1 flex flex-col items-center px-8">
-        <div className="h-6" />
-
+      {/* 固定控制区：胶囊分类 + 搜索 */}
+      <div className="flex-shrink-0 flex flex-col items-center px-8 pt-6 pb-4 relative z-10">
         {/* 胶囊分类栏 */}
         <div className="w-full max-w-[1000px]">
           <CapsuleTabs
@@ -439,7 +437,7 @@ export function TasksPage() {
           />
         </div>
 
-        <div className="h-6" />
+        <div className="h-4" />
 
         {/* 搜索框 + 排序 */}
         <div className="w-full max-w-[1000px] flex items-center gap-3">
@@ -509,10 +507,10 @@ export function TasksPage() {
             <ListChecks size={18} />
           </button>
         </div>
+      </div>
 
-        <div className="h-4" />
-
-        {/* 任务卡片区 */}
+      {/* 可滚动内容区：任务卡片 */}
+      <div className="flex-1 overflow-y-auto flex flex-col items-center px-8 pb-8 relative z-10">
         <div className="w-full max-w-[1000px]">
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
@@ -927,9 +925,9 @@ export function TasksPage() {
             onClick={closeDetail}
           />
           {/* 详情面板 */}
-          <div className="relative w-full max-w-[480px] bg-white shadow-2xl flex flex-col overflow-y-auto animate-slide-in">
+          <div className="relative w-full max-w-[480px] shadow-2xl flex flex-col animate-slide-in" style={{ backgroundColor: '#E0F7FA' }}>
             {/* 头部 */}
-            <div className="flex items-center justify-between p-6 border-b border-black/10">
+            <div className="flex items-center justify-between p-6 border-b border-black/8">
               <h2 className="text-xl text-black/80">任务详情</h2>
               <button
                 onClick={closeDetail}
@@ -939,7 +937,7 @@ export function TasksPage() {
               </button>
             </div>
 
-            <div className="flex-1 p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* 标题 */}
               <div>
                 <label className="block text-sm text-black/40 mb-1.5">标题</label>
@@ -1241,7 +1239,7 @@ export function TasksPage() {
             </div>
 
             {/* 底部操作 */}
-            <div className="p-6 border-t border-black/10 space-y-3">
+            <div className="p-6 border-t border-black/8 space-y-3">
               {/* 保存按钮 */}
               <button
                 onClick={handleSave}

@@ -6,14 +6,14 @@ interface PageContainerProps {
   bgColor?: string;
 }
 
-export function PageContainer({ 
-  children, 
-  className = '', 
-  bgColor 
+export function PageContainer({
+  children,
+  className = '',
+  bgColor
 }: PageContainerProps) {
   return (
-    <div 
-      className={`min-h-screen px-4 md:px-6 lg:px-8 ${className}`}
+    <div
+      className={`h-screen px-4 md:px-6 lg:px-8 flex flex-col overflow-hidden ${className}`}
       style={bgColor ? { backgroundColor: bgColor } : undefined}
     >
       {children}

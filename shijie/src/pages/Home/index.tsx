@@ -71,9 +71,9 @@ export function HomePage() {
       )}
 
       {/* ========== 顶部标题栏 ========== */}
-      <div className="relative z-10 h-[72px] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8">
+      <div data-tauri-drag-region className="relative z-10 h-[72px] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8">
         {/* 左上角 - 提灯按钮 */}
-        <HeaderButton title="提灯" />
+        <HeaderButton title="助手" />
 
         {/* 中央 - 诗句标题 */}
         <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl tracking-widest text-white/85 font-light">

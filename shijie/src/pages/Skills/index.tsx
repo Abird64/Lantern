@@ -23,7 +23,7 @@ export function SkillsPage() {
 
   return (
     <div
-      className="min-h-screen px-4 md:px-6 lg:px-8 relative flex flex-col"
+      className="h-screen px-4 md:px-6 lg:px-8 relative flex flex-col overflow-hidden"
       style={{ backgroundColor: theme.bg }}
     >
       {/* 网格背景 */}
@@ -46,7 +46,7 @@ export function SkillsPage() {
       />
 
       {/* 主内容 */}
-      <div className="flex-1 flex flex-col items-center px-8">
+      <div className="flex-1 overflow-y-auto flex flex-col items-center px-8 pb-8">
         <div className="h-6" />
 
         {/* 六维属性卡片 */}

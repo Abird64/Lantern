@@ -1,6 +1,7 @@
 import { Menu } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
 import { navbar, windowControls } from '@/styles/theme';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface NavBarProps {
   title: string;
@@ -26,11 +27,12 @@ export function NavBar({
   const { setMenuOpen } = useUIStore();
 
   return (
-    <div 
+    <div
+      data-tauri-drag-region
       className={`
-        h-[72px] flex items-center justify-between 
+        h-[72px] flex items-center justify-between
         ${navbar.padding.x}
-        border-b border-white/10 
+        border-b border-white/10
         flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8
       `}
       style={{ backgroundColor: navColor }}
@@ -73,6 +75,13 @@ interface WindowControlButtonProps {
 
 function WindowControlButton({ id, color, label }: WindowControlButtonProps) {
   const [hovered, setHovered] = useState(false);
+  const appWindow = getCurrentWindow();
+
+  const handleClick = () => {
+    if (id === 0) appWindow.minimize();
+    else if (id === 1) appWindow.toggleMaximize();
+    else if (id === 2) appWindow.close();
+  };
 
   return (
     <button
@@ -83,6 +92,7 @@ function WindowControlButton({ id, color, label }: WindowControlButtonProps) {
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={handleClick}
     >
       {hovered && (
         <svg

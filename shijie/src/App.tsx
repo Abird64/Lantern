@@ -36,7 +36,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="h-screen overflow-hidden">
       <DropdownMenu />
       {renderPage()}
     </div>

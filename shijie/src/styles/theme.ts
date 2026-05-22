@@ -18,7 +18,7 @@ export interface PageTheme {
 
 export const themes: Record<string, PageTheme> = {
   tasks: {
-    name: '尘事',
+    name: '任务',
     bg: '#C8C8C0',
     nav: '#2D352F',
     accent: '#58A968',
@@ -27,7 +27,7 @@ export const themes: Record<string, PageTheme> = {
     card: '#E0F7FA',
   },
   diary: {
-    name: '尘笺',
+    name: '日记',
     bg: '#F7F3E9',
     nav: '#2C3532',
     accent: '#E65C5C',
@@ -36,7 +36,7 @@ export const themes: Record<string, PageTheme> = {
     card: '#E6D9B8',
   },
   schedule: {
-    name: '时序',
+    name: '日历',
     bg: '#953737',
     nav: '#2A2A2A',
     accent: '#F2C94C',
@@ -54,7 +54,7 @@ export const themes: Record<string, PageTheme> = {
     card: '#3A4652',
   },
   lantern: {
-    name: '心灯',
+    name: '助手',
     bg: '#1B1B1B',
     nav: '#2D3A32',
     accent: '#58A968',
@@ -164,11 +164,11 @@ export const navbar = {
 // ========== 胶囊标签栏 ==========
 export const capsuleTab = {
   padding: {
-    x: 'px-6 md:px-8',
-    y: 'py-3 md:py-4',
+    x: 'px-4 md:px-5',
+    y: 'py-1.5 md:py-2',
   },
-  minWidth: '80px',
-  fontSize: 'text-lg',
+  minWidth: '60px',
+  fontSize: 'text-sm',
   borderRadius: 'rounded-full',
   transition: 'transition-all duration-200',
 };

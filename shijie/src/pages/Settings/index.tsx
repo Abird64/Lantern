@@ -63,6 +63,7 @@ export function SettingsPage() {
     >
       {/* ========== 顶部导航栏 ========== */}
       <div
+        data-tauri-drag-region
         className="relative z-10 h-[72px] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8"
         style={{ backgroundColor: getBgColor() }}
       >

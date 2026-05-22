@@ -107,6 +107,7 @@ export { PageContainer } from './PageContainer';
 | 日程 | `src/pages/Schedule/index.tsx` | `SchedulePage` |
 | 日记 | `src/pages/Diary/index.tsx` | `DiaryPage` |
 | 关系 | `src/pages/Relations/index.tsx` | `RelationsPage` |
+| 修为 | `src/pages/Skills/index.tsx` | `SkillsPage` |
 | 设置 | `src/pages/Settings/index.tsx` | `SettingsPage` |
 
 所有页面组件必须在 `src/pages/index.ts` 中导出。
@@ -174,4 +175,4 @@ A:
 
 ---
 
-*最后更新: 2026-05-19*
+*最后更新: 2026-05-22*

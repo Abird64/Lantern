@@ -44,7 +44,7 @@ export function PageWrapper({
   className?: string;
 }) {
   return (
-    <div className={`min-h-screen px-4 md:px-6 lg:px-8 ${className}`}>
+    <div className={`h-screen overflow-hidden px-4 md:px-6 lg:px-8 flex flex-col ${className}`}>
       {children}
     </div>
   );

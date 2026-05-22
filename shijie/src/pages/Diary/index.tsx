@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card } from '@/components/ui';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
 import { TimelineDropdown } from '@/components/diary/TimelineDropdown';
 import { AiDiaryPanel } from '@/components/diary/AiDiaryPanel';
 import { useJournalStore } from '@/stores/journalStore';
+import { SKILL_COLORS } from '@/styles/theme';
+import type { CompleteResult } from '@/types/task';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -28,6 +30,10 @@ export function DiaryPage() {
     completeDiary,
   } = useJournalStore();
 
+  // 日省结果浮窗
+  const [xpToast, setXpToast] = useState<CompleteResult | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // 初始化：加载今日日记
   useEffect(() => {
     loadToday();
@@ -40,55 +46,71 @@ export function DiaryPage() {
     };
   }, [saveNow]);
 
+  // 清理 toast 计时器
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const handleRixing = async () => {
+    await saveNow();
+    const result = await completeDiary();
+    if (result) {
+      setXpToast(result);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setXpToast(null), 4000);
+    }
+  };
+
   return (
     <PageContainer className="bg-[#F7F3E9] relative">
       {/* 顶部导航栏 */}
-      <div className="h-[72px] bg-[#2C3532] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 -mx-4 md:-mx-6 lg:-mx-8">
-        <HeaderButton title="尘笺" />
+      <div data-tauri-drag-region className="flex-shrink-0 h-[72px] bg-[#2C3532] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 -mx-4 md:-mx-6 lg:-mx-8">
+        <HeaderButton title="日记" />
         <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl tracking-widest text-white/85 font-light">
           人闲桂花落，夜景春山空
         </h1>
         <WindowControls />
       </div>
 
-      {/* 顶部间隔 */}
-      <div className="h-6" />
+      {/* 固定控制区：日期胶囊 + 时间线 */}
+      <div className="flex-shrink-0 flex flex-col items-center pt-6 pb-3">
+        {/* 日期胶囊 - 可点击打开时间线 */}
+        <div className="flex justify-center px-8 w-full">
+          <div className="max-w-[1000px] flex-1">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={toggleTimeline}
+                className="min-w-[200px] py-4 bg-[#E6D9B8] rounded-full px-10 flex items-center justify-center hover:bg-[#d9c9a5] transition-colors cursor-pointer"
+              >
+                {isLoading ? (
+                  <span className="font-zhuque text-xl text-black/50">加载中...</span>
+                ) : (
+                  <span className="font-zhuque text-xl text-black">
+                    {formatDisplayDate(currentDate)}
+                  </span>
+                )}
+              </button>
 
-      {/* 日期胶囊 - 可点击打开时间线 */}
-      <div className="flex justify-center px-8">
-        <div className="max-w-[1000px] flex-1">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={toggleTimeline}
-              className="min-w-[200px] py-4 bg-[#E6D9B8] rounded-full px-10 flex items-center justify-center hover:bg-[#d9c9a5] transition-colors cursor-pointer"
-            >
-              {isLoading ? (
-                <span className="font-zhuque text-xl text-black/50">加载中...</span>
-              ) : (
-                <span className="font-zhuque text-xl text-black">
-                  {formatDisplayDate(currentDate)}
-                </span>
+              {/* 保存状态指示 */}
+              {isSaving && (
+                <span className="font-zhuque text-sm text-black/30">保存中...</span>
               )}
-            </button>
-
-            {/* 保存状态指示 */}
-            {isSaving && (
-              <span className="font-zhuque text-sm text-black/30">保存中...</span>
-            )}
-            {!isSaving && lastSaved && (
-              <span className="font-zhuque text-sm text-black/30">已保存</span>
-            )}
+              {!isSaving && lastSaved && (
+                <span className="font-zhuque text-sm text-black/30">已保存</span>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* 时间线下拉 */}
+        <div className="h-3" />
+        <TimelineDropdown />
       </div>
 
-      {/* 时间线下拉 */}
-      <div className="h-3" />
-      <TimelineDropdown />
-      <div className="h-3" />
-
-      {/* 日记内容区 */}
-      <div className="flex justify-center px-8 pb-20">
+      {/* 日记正文 */}
+      <div className="flex-1 flex justify-center items-center px-8 pb-20">
         <Card
           variant="diary"
           className="w-full max-w-[1000px] h-[600px]"
@@ -106,22 +128,43 @@ export function DiaryPage() {
       <div className="absolute right-20 bottom-16">
         <button
           className="w-[100px] h-[60px] bg-[#E65C5C] rounded-full flex items-center justify-center hover:bg-[#d14545] transition-colors shadow-lg"
-          onClick={async () => {
-            // 先强制保存日记
-            await saveNow();
-            // XP 结算
-            const result = await completeDiary();
-            if (result) {
-              const summary = result.skill_xps
-                .map((s) => `${s.skill_name} +${s.xp}`)
-                .join('、');
-              alert(`日省完成！获得 ${result.xp_earned} XP\n${summary}`);
-            }
-          }}
+          onClick={handleRixing}
         >
           <span className="font-zhuque text-xl text-white">日省</span>
         </button>
       </div>
+
+      {/* XP 结算浮窗 */}
+      {xpToast && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div
+            className="pointer-events-auto bg-[#2C3532] rounded-2xl px-8 py-6 shadow-2xl animate-in fade-in zoom-in duration-300"
+            onClick={() => setXpToast(null)}
+          >
+            <p className="font-zhuque text-xl text-white/90 text-center mb-4 tracking-widest">
+              日省完成
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center mb-3">
+              {xpToast.skill_xps.map((s) => {
+                const color = SKILL_COLORS[s.skill_id]?.hex ?? '#999';
+                return (
+                  <div
+                    key={s.skill_id}
+                    className="rounded-full px-4 py-1.5 flex items-center gap-2"
+                    style={{ backgroundColor: `${color}30` }}
+                  >
+                    <span className="font-zhuque text-sm" style={{ color }}>{s.skill_name}</span>
+                    <span className="font-zhuque text-sm text-white/80">+{s.xp}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="font-zhuque text-sm text-white/40 text-center">
+              共获得 {xpToast.xp_earned} XP · 点击关闭
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 日晷图标 - 点击打开 AI 尘笺 */}
       <div className="absolute bottom-0 left-0 cursor-pointer" onClick={toggleAiPanel}>

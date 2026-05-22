@@ -40,6 +40,19 @@ pub fn run() {
             commands::journal_commands::get_ai_diary,
             commands::journal_commands::save_ai_diary,
             commands::journal_commands::complete_diary,
+            commands::contact_commands::create_contact,
+            commands::contact_commands::get_contact,
+            commands::contact_commands::list_contacts,
+            commands::contact_commands::update_contact,
+            commands::contact_commands::delete_contact,
+            commands::contact_commands::search_contacts,
+            commands::schedule_commands::create_schedule,
+            commands::schedule_commands::get_schedule,
+            commands::schedule_commands::list_schedules_in_range,
+            commands::schedule_commands::update_schedule,
+            commands::schedule_commands::delete_schedule,
+            commands::schedule_commands::add_exdate,
+            commands::schedule_commands::import_ics_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
