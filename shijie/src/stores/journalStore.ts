@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Journal } from '@/types/journal';
+import type { CompleteResult } from '@/types/task';
 import * as journalService from '@/services/journalService';
 
 interface JournalState {
@@ -26,6 +27,7 @@ interface JournalState {
   isSaving: boolean;
   lastSaved: number | null;
   error: string | null;
+  xpResult: CompleteResult | null;
 
   // 内部：自动保存计时器
   _saveTimer: ReturnType<typeof setTimeout> | null;
@@ -44,6 +46,9 @@ interface JournalState {
   // AI 面板
   toggleAiPanel: () => void;
   fetchAiDiary: () => Promise<void>;
+
+  // 日省 XP 结算
+  completeDiary: () => Promise<CompleteResult | null>;
 }
 
 function getToday(): string {
@@ -78,6 +83,7 @@ export const useJournalStore = create<JournalState>((set, get) => {
     isSaving: false,
     lastSaved: null,
     error: null,
+    xpResult: null,
     _saveTimer: null,
 
     setCurrentDate: async (date: string) => {
@@ -199,6 +205,18 @@ export const useJournalStore = create<JournalState>((set, get) => {
         set({ aiContent: ai.content, aiExists: ai.exists });
       } catch (e) {
         set({ error: String(e) });
+      }
+    },
+
+    completeDiary: async () => {
+      const { currentDate } = get();
+      try {
+        const result = await journalService.completeDiary(currentDate);
+        set({ xpResult: result });
+        return result;
+      } catch (e) {
+        set({ error: String(e) });
+        return null;
       }
     },
   };

@@ -39,6 +39,7 @@ pub fn run() {
             commands::journal_commands::get_timeline,
             commands::journal_commands::get_ai_diary,
             commands::journal_commands::save_ai_diary,
+            commands::journal_commands::complete_diary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

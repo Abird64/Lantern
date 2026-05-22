@@ -331,12 +331,23 @@ src-tauri/src/
 | 项目 | 优先级 | 说明 |
 |------|--------|------|
 | ~~日记后端打通~~ | ✅ 完成 | journal_repo + journal_commands + 前端联调 |
-| 日记日醒加 XP | 日记完成后 | 创建虚拟任务走 complete_task 流程 |
-| 相识后端打通 | 下一步 | contact_repo + contact_commands |
+| 日记 XP 结算 | 当前 | 日省按钮触发，默认值先打通链路，后续 AI 判断属性分配 |
+| AI XP 分配提示词 | 日记XP之后 | AI 根据日记内容判断给哪些属性加多少 XP，提示词可配置 |
+| 相识后端打通 | XP之后 | contact_repo + contact_commands |
 | 日历后端 | 相识之后 | schedule_repo + rrule 解析 + .ics 导入 |
 | CLI 化 | 远期 | 暴露命令行入口供外部 AI Agent 调用 |
 | 插件系统 | 远期 | 可扩展的模块/工具加载机制 |
 | 课程表 .ics 导入 | 日历时 | 支持从 WakeUp 等工具导入 iCal 文件 |
+
+### AI 健壮性规划（待实现）
+
+| 场景 | 应对策略 |
+|------|----------|
+| **API 欠费/不可用** | fallback 到本地规则：固定 XP 值 / 字数计算，AI 内容用占位文案 |
+| **AI 输出格式异常** | 定义严格的 JSON schema，解析失败时降级处理，不阻塞用户操作 |
+| **生成超时** | 设置合理超时（15s），超时后提示用户稍后重试，已写入的日记不丢失 |
+| **提示词版本管理** | 提示词存 settings 表，支持用户自定义，升级时保留用户修改 |
+| **多 AI Provider** | 抽象 Provider 层（OpenAI/Anthropic/DeepSeek/Ollama），统一接口，支持切换 |
 
 ---
 

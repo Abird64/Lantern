@@ -25,6 +25,7 @@ export function DiaryPage() {
     saveNow,
     toggleTimeline,
     toggleAiPanel,
+    completeDiary,
   } = useJournalStore();
 
   // 初始化：加载今日日记
@@ -105,7 +106,18 @@ export function DiaryPage() {
       <div className="absolute right-20 bottom-16">
         <button
           className="w-[100px] h-[60px] bg-[#E65C5C] rounded-full flex items-center justify-center hover:bg-[#d14545] transition-colors shadow-lg"
-          onClick={() => alert('提灯将从任务、日程、日记多维度为你写一段今日旁白（即将上线）')}
+          onClick={async () => {
+            // 先强制保存日记
+            await saveNow();
+            // XP 结算
+            const result = await completeDiary();
+            if (result) {
+              const summary = result.skill_xps
+                .map((s) => `${s.skill_name} +${s.xp}`)
+                .join('、');
+              alert(`日省完成！获得 ${result.xp_earned} XP\n${summary}`);
+            }
+          }}
         >
           <span className="font-zhuque text-xl text-white">日省</span>
         </button>

@@ -3,6 +3,7 @@
  */
 import { tauriInvoke } from './tauri';
 import type { Journal, JournalEntry, AiDiary } from '@/types/journal';
+import type { CompleteResult } from '@/types/task';
 
 /** 获取或创建指定日期的日记 */
 export async function getJournalByDate(date: string): Promise<JournalEntry> {
@@ -46,5 +47,12 @@ export async function saveAiDiary(
 ): Promise<void> {
   return tauriInvoke<void>('save_ai_diary', {
     input: { date, content },
+  });
+}
+
+/** 日记 XP 结算（日省） */
+export async function completeDiary(date: string): Promise<CompleteResult> {
+  return tauriInvoke<CompleteResult>('complete_diary', {
+    input: { date },
   });
 }

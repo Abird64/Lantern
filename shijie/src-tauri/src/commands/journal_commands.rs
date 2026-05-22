@@ -186,3 +186,18 @@ pub fn save_ai_diary(
         &input.content,
     )
 }
+
+/// 日记 XP 结算（日省按钮触发）
+#[tauri::command]
+pub fn complete_diary(
+    db_state: State<'_, DbState>,
+    input: GetJournalInput,
+) -> Result<serde_json::Value, String> {
+    let mut conn = db_state
+        .conn
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| e.to_string())?;
+
+    let result = journal_repo::complete_diary(&mut conn, &input.date)?;
+    serde_json::to_value(result).map_err(|e| e.to_string())
+}

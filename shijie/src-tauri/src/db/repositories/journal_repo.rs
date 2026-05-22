@@ -344,3 +344,60 @@ pub fn save_ai_diary_meta(
     )
     .map_err(|e| format!("Failed to retrieve created ai journal: {}", e))
 }
+
+/// 日记 XP 结算：创建虚拟任务 + 完成 → 复用 complete_task 流程
+/// 返回 (xp_earned, skill_xps)
+pub fn complete_diary(
+    conn: &mut Connection,
+    date: &str,
+) -> Result<super::task_repo::CompleteResult, String> {
+    let task_title = format!("{} 日醒", date);
+
+    // 检查是否已经结算过（虚拟任务已完成）
+    {
+        let mut stmt = conn
+            .prepare("SELECT id FROM tasks WHERE title = ?1 AND status = 'completed'")
+            .map_err(|e| format!("Failed to check diary task: {}", e))?;
+
+        let mut rows = stmt
+            .query_map(params![task_title], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query diary task: {}", e))?;
+
+        if rows.next().is_some() {
+            return Err("今日已结算 XP".to_string());
+        }
+    }
+
+    // 创建虚拟任务
+    let task_id = gen_id();
+    let time = now();
+
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, created_at, updated_at)
+         VALUES (?1, ?2, 'pending', ?3, ?4)",
+        params![task_id, task_title, time, time],
+    )
+    .map_err(|e| format!("Failed to create diary task: {}", e))?;
+
+    // 分配 XP（默认每项属性 +1，后续由 AI 判断分配）
+    let default_skills = [
+        "knowledge",
+        "physique",
+        "charm",
+        "talent",
+        "worldliness",
+        "cultivation",
+    ];
+
+    for skill_id in &default_skills {
+        let link_id = gen_id();
+        conn.execute(
+            "INSERT INTO task_skills (id, task_id, skill_id, xp_amount) VALUES (?1, ?2, ?3, 1)",
+            params![link_id, task_id, skill_id],
+        )
+        .map_err(|e| format!("Failed to link diary task skill: {}", e))?;
+    }
+
+    // 复用 complete_task 完成 XP 结算
+    super::task_repo::complete_task(conn, &task_id)
+}
