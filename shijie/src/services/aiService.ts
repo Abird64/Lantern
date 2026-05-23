@@ -57,3 +57,17 @@ export async function modifyToolCalls(
 ): Promise<AiMessage[]> {
   return tauriInvoke<AiMessage[]>('modify_tool_calls', { conversationId, feedback });
 }
+
+/** 执行单个工具调用（不触发 AI 跟进） */
+export async function executeSingleToolCall(
+  conversationId: string,
+  messageId: string,
+  toolCallId: string,
+): Promise<AiMessage[]> {
+  return tauriInvoke<AiMessage[]>('execute_single_tool_call', { conversationId, messageId, toolCallId });
+}
+
+/** 所有工具执行完毕后，触发 AI 跟进回复 */
+export async function finalizeToolCalls(conversationId: string): Promise<AiMessage[]> {
+  return tauriInvoke<AiMessage[]>('finalize_tool_calls', { conversationId });
+}

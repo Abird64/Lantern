@@ -319,6 +319,11 @@ pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, 
     tx.commit()
         .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
+    // 升级检查（在事务提交后，确保能看到最新的 total_xp）
+    for (skill_id, _) in &skill_xps {
+        super::skill_repo::check_level_up(conn, skill_id)?;
+    }
+
     Ok(CompleteResult {
         xp_earned: total_xp,
         skill_xps: result_skills,
@@ -399,6 +404,116 @@ pub fn search_tasks(conn: &Connection, query: &str) -> Result<Vec<Task>, String>
         .map_err(|e| format!("Failed to collect search results: {}", e))?;
 
     Ok(tasks)
+}
+
+/// 分词加权搜索：将 query 拆成词，多字段命中打分，按总分降序返回
+/// 字段权重：标题=10，标签=5，描述=3，备注=2
+pub fn search_tasks_scored(
+    conn: &Connection,
+    query: &str,
+    status_filter: Option<&str>,
+    priority_filter: Option<&str>,
+) -> Result<Vec<(Task, i32)>, String> {
+    // 分词：按空白字符和中文标点拆
+    let tokens: Vec<&str> = query
+        .split(|c: char| c.is_whitespace() || c == '，' || c == '。' || c == '、' || c == '；')
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    if tokens.is_empty() {
+        // 无有效 token → 列出所有（带筛选）
+        let tasks = list_tasks(conn, status_filter, None)?;
+        let filtered: Vec<Task> = if let Some(p) = priority_filter {
+            tasks.into_iter().filter(|t| t.priority.as_deref() == Some(p)).collect()
+        } else {
+            tasks
+        };
+        return Ok(filtered.into_iter().map(|t| (t, 0)).collect());
+    }
+
+    // 构建动态 SQL：每个 token 产生一组 (title LIKE ? OR description LIKE ? OR notes LIKE ? OR tags LIKE ?)
+    let mut conditions: Vec<String> = Vec::new();
+    let mut param_values: Vec<String> = Vec::new();
+
+    for token in &tokens {
+        let pattern = format!("%{}%", token);
+        conditions.push(
+            "(title LIKE ? OR description LIKE ? OR notes LIKE ? OR tags LIKE ?)".to_string(),
+        );
+        for _ in 0..4 {
+            param_values.push(pattern.clone());
+        }
+    }
+
+    let mut sql = format!(
+        "SELECT {} FROM tasks WHERE ({})",
+        TASK_COLUMNS,
+        conditions.join(" OR ")
+    );
+
+    if let Some(s) = status_filter {
+        sql.push_str(" AND status = ?");
+        param_values.push(s.to_string());
+    }
+
+    if let Some(p) = priority_filter {
+        sql.push_str(" AND priority = ?");
+        param_values.push(p.to_string());
+    }
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| format!("Failed to prepare scored search: {}", e))?;
+
+    let param_refs: Vec<&dyn rusqlite::ToSql> = param_values
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+
+    let tasks: Vec<Task> = stmt
+        .query_map(param_refs.as_slice(), task_from_row)
+        .map_err(|e| format!("Failed to execute scored search: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect scored results: {}", e))?;
+
+    // 打分
+    let mut scored: Vec<(Task, i32)> = tasks
+        .into_iter()
+        .map(|task| {
+            let score = score_task_against_tokens(&task, &tokens);
+            (task, score)
+        })
+        .collect();
+
+    // 按分数降序
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    Ok(scored)
+}
+
+fn score_task_against_tokens(task: &Task, tokens: &[&str]) -> i32 {
+    let title = task.title.to_lowercase();
+    let desc = task.description.as_deref().unwrap_or("").to_lowercase();
+    let notes = task.notes.as_deref().unwrap_or("").to_lowercase();
+    let tags = task.tags.as_deref().unwrap_or("").to_lowercase();
+
+    let mut score = 0;
+    for token in tokens {
+        let t = token.to_lowercase();
+        if title.contains(&t) {
+            score += 10;
+        }
+        if tags.contains(&t) {
+            score += 5;
+        }
+        if desc.contains(&t) {
+            score += 3;
+        }
+        if notes.contains(&t) {
+            score += 2;
+        }
+    }
+    score
 }
 
 #[derive(Debug, Serialize)]

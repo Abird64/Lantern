@@ -7,6 +7,7 @@ export { Tab } from './Tab';
 export { CapsuleTabs } from './CapsuleTabs';
 export { NavBar } from './NavBar';
 export { LanternSvg } from './LanternSvg';
+export { MascotModal } from './MascotModal';
 export { Input, Textarea } from './Input';
 export { Container, Section, PageWrapper } from './Layout';
 

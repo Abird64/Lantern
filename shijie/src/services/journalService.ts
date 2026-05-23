@@ -33,14 +33,14 @@ export async function getTimeline(
   });
 }
 
-/** 获取 AI 尘笺 */
+/** 获取 AI 日记 */
 export async function getAiDiary(date: string): Promise<AiDiary> {
   return tauriInvoke<AiDiary>('get_ai_diary', {
     input: { date },
   });
 }
 
-/** 保存 AI 尘笺 */
+/** 保存 AI 日记 */
 export async function saveAiDiary(
   date: string,
   content: string
@@ -50,7 +50,7 @@ export async function saveAiDiary(
   });
 }
 
-/** 日记 XP 结算（日省） */
+/** 日记 XP 结算 */
 export async function completeDiary(date: string): Promise<CompleteResult> {
   return tauriInvoke<CompleteResult>('complete_diary', {
     input: { date },

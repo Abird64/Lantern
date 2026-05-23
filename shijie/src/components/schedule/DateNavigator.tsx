@@ -5,9 +5,10 @@ interface DateNavigatorProps {
   onToday: () => void;
   onCreateEvent: () => void;
   onImportIcs?: () => void;
+  onExportIcs?: () => void;
 }
 
-export function DateNavigator({ weekLabel, onPrev, onNext, onToday, onCreateEvent, onImportIcs }: DateNavigatorProps) {
+export function DateNavigator({ weekLabel, onPrev, onNext, onToday, onCreateEvent, onImportIcs, onExportIcs }: DateNavigatorProps) {
   return (
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-2">
@@ -48,6 +49,14 @@ export function DateNavigator({ weekLabel, onPrev, onNext, onToday, onCreateEven
             className="px-3 py-1.5 rounded-full bg-[#F2C94C]/30 text-white/80 hover:bg-[#F2C94C]/50 text-sm font-light transition-colors"
           >
             导入
+          </button>
+        )}
+        {onExportIcs && (
+          <button
+            onClick={onExportIcs}
+            className="px-3 py-1.5 rounded-full bg-[#F2C94C]/30 text-white/80 hover:bg-[#F2C94C]/50 text-sm font-light transition-colors"
+          >
+            导出
           </button>
         )}
         <button

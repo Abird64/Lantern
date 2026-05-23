@@ -9,9 +9,9 @@
 | 页面 | 路由 | 阴面名称 | 导航栏标题 | 诗句 |
 |------|------|----------|------------|------|
 | HomePage | / | 提灯 | 提灯 | 野径云俱黑，江船火独明 |
-| TasksPage | /tasks | 尘事 | 尘事 | 苔痕上阶绿，草色入帘青 |
-| SchedulePage | /schedule | 时序 | 时序 | 墙角数枝梅，凌寒独自开 |
-| DiaryPage | /diary | 尘笺 | 尘笺 | 人闲桂花落，夜景春山空 |
+| TasksPage | /tasks | 任务 | 任务 | 苔痕上阶绿，草色入帘青 |
+| SchedulePage | /schedule | 日历 | 日历 | 墙角数枝梅，凌寒独自开 |
+| DiaryPage | /diary | 日记 | 日记 | 人闲桂花落，夜景春山空 |
 | RelationsPage | /relations | 相识 | 相识 | 何当共剪西窗烛，却话巴山夜雨时 |
 | SettingsPage | /settings | 设置 | 设置 | 静水流深，智者无言 |
 
@@ -39,7 +39,7 @@
 
 ---
 
-## 2. 尘事（TasksPage）
+## 2. 任务（TasksPage）
 
 **文件路径**: `src/pages/Tasks/index.tsx`
 
@@ -65,7 +65,7 @@
 
 ---
 
-## 3. 时序（SchedulePage）
+## 3. 日历（SchedulePage）
 
 **文件路径**: `src/pages/Schedule/index.tsx`
 
@@ -84,7 +84,7 @@
 
 ---
 
-## 4. 尘笺（DiaryPage）
+## 4. 日记（DiaryPage）
 
 **文件路径**: `src/pages/Diary/index.tsx`
 

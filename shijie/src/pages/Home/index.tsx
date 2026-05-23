@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Trash2, MessageSquare, Copy, StopCircle, Check } from 'lucide-react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
 import { LanternSvg } from '@/components/ui';
 import { ToolCallCard } from '@/components/ai/ToolCallCard';
@@ -46,6 +47,7 @@ export function HomePage() {
     sendMessage,
     stopGeneration,
     executeToolCalls,
+    executeSingleToolCall,
     cancelToolCalls,
     modifyToolCalls,
     clearError,
@@ -181,81 +183,105 @@ export function HomePage() {
               <div className="max-w-[700px] mx-auto space-y-4">
                 {messages.map((msg, i) => {
                   const toolCalls = parseToolCalls(msg.tool_calls);
-                  // 只给"最后一个有工具调用的 AI 消息"显示确认卡片
-                  const showCard =
-                    toolCalls.length > 0 &&
-                    !messages.slice(i + 1).some(
-                      (m) => m.role === 'tool' || m.role === 'assistant',
-                    );
+                  // 检查是否还有未处理的 tool_call：消息之后不能有 AI 回复
+                  const hasAiReplyAfter = messages.slice(i + 1).some(
+                    (m) => m.role === 'assistant' && m.content,
+                  );
 
                   const isUser = msg.role === 'user';
                   const isTool = msg.role === 'tool';
 
                   return (
-                    <div
-                      key={msg.id}
-                      className={`group flex ${isUser ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className="max-w-[80%]">
-                        {/* 气泡 */}
-                        <div
-                          className={`chat-bubble px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                            isUser
-                              ? 'bg-[#58A968]/20 text-white/90 rounded-br-md whitespace-pre-wrap'
-                              : isTool
-                                ? 'bg-white/3 text-white/30 rounded-bl-md text-xs italic'
-                                : 'bg-white/8 text-white/80 rounded-bl-md markdown-body'
-                          }`}
-                        >
-                          {msg.role === 'assistant' && msg.content ? (
-                            <Markdown>{msg.content}</Markdown>
-                          ) : isTool ? (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-1 h-1 rounded-full bg-white/20" />
-                              {msg.content}
-                            </div>
-                          ) : (
-                            msg.content || ''
-                          )}
+                    <div key={msg.id}>
+                      {/* 消息气泡行 */}
+                      <div className={`group flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div className="max-w-[80%]">
+                          <div
+                            className={`chat-bubble px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                              isUser
+                                ? 'bg-[#58A968]/20 text-white/90 rounded-br-md whitespace-pre-wrap'
+                                : isTool
+                                  ? 'bg-white/3 text-white/30 rounded-bl-md text-xs italic'
+                                  : 'bg-white/8 text-white/80 rounded-bl-md markdown-body'
+                            }`}
+                          >
+                            {msg.role === 'assistant' && msg.content ? (
+                              <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
+                            ) : isTool ? (
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-1 h-1 rounded-full bg-white/20" />
+                                {msg.content}
+                              </div>
+                            ) : (
+                              msg.content || ''
+                            )}
+                          </div>
 
-                          {/* 工具调用确认卡片 */}
-                          {showCard && (
-                            <div className="mt-2">
-                              {toolCalls.map((tc) => (
-                                <ToolCallCard
-                                  key={tc.id}
-                                  toolCall={tc}
-                                  isExecuting={isExecuting}
-                                  onConfirm={() => executeToolCalls(msg.id)}
-                                  onCancel={() => cancelToolCalls(msg.id)}
-                                  onModify={(feedback) => modifyToolCalls(feedback)}
-                                />
-                              ))}
+                          {/* 操作栏：hover 时显示在气泡下方 */}
+                          {(isUser || msg.role === 'assistant') && msg.content && (
+                            <div
+                              className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                isUser ? 'justify-end' : 'justify-start'
+                              }`}
+                            >
+                              <button
+                                onClick={() => handleCopy(msg.id, msg.content)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-white/25 hover:text-white/60 hover:bg-white/8 transition-colors"
+                                title="复制"
+                              >
+                                {copiedId === msg.id ? (
+                                  <Check size={12} className="text-[#58A968]" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
                             </div>
                           )}
                         </div>
-
-                        {/* 操作栏：hover 时显示在气泡下方 */}
-                        {(isUser || msg.role === 'assistant') && msg.content && (
-                          <div
-                            className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
-                              isUser ? 'justify-end' : 'justify-start'
-                            }`}
-                          >
-                            <button
-                              onClick={() => handleCopy(msg.id, msg.content)}
-                              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-white/25 hover:text-white/60 hover:bg-white/8 transition-colors"
-                              title="复制"
-                            >
-                              {copiedId === msg.id ? (
-                                <Check size={12} className="text-[#58A968]" />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
-                          </div>
-                        )}
                       </div>
+
+                      {/* 工具调用确认卡片 — 在气泡外，固定宽度 */}
+                      {(() => {
+                        if (hasAiReplyAfter || toolCalls.length === 0) return null;
+                        const pendingCalls = toolCalls.filter((tc) =>
+                          !messages.slice(i + 1).some(
+                            (m) => m.role === 'tool' && m.tool_call_id === tc.id,
+                          )
+                        );
+                        if (pendingCalls.length === 0) return null;
+                        return (
+                          <div className="flex justify-start mt-2">
+                            <div className="w-[320px] space-y-2">
+                              {/* 多个卡片时显示"全部确认"按钮 */}
+                              {pendingCalls.length >= 2 && (
+                                <button
+                                  onClick={() => executeToolCalls(msg.id)}
+                                  disabled={isExecuting}
+                                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 text-xs transition-colors disabled:opacity-50"
+                                >
+                                  全部确认（{pendingCalls.length} 项）
+                                </button>
+                              )}
+                              {toolCalls.map((tc) => {
+                                const isThisDone = messages.slice(i + 1).some(
+                                  (m) => m.role === 'tool' && m.tool_call_id === tc.id,
+                                );
+                                if (isThisDone) return null;
+                                return (
+                                  <ToolCallCard
+                                    key={tc.id}
+                                    toolCall={tc}
+                                    isExecuting={isExecuting}
+                                    onConfirm={() => executeSingleToolCall(msg.id, tc.id)}
+                                    onCancel={() => cancelToolCalls(msg.id)}
+                                    onModify={(feedback) => modifyToolCalls(feedback)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

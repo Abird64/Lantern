@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
+import { LanternSvg, MascotModal } from '@/components/ui';
 import { WeekView } from '@/components/schedule/WeekView';
 import { MonthView } from '@/components/schedule/MonthView';
 import { AgendaView } from '@/components/schedule/AgendaView';
@@ -50,6 +51,7 @@ export function SchedulePage() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState<Schedule | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [showAiPanel, setShowAiPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { schedules, isLoading, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, filter, setFilter } = useScheduleStore();
@@ -254,6 +256,25 @@ export function SchedulePage() {
     e.target.value = '';
   }, [rangeStart, rangeEnd]);
 
+  // 导出 .ics 文件
+  const handleExportIcs = useCallback(async () => {
+    try {
+      const icsContent = await scheduleService.exportIcsEvents();
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schedule_export_${new Date().toISOString().slice(0, 10)}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setImportResult('导出成功');
+      setTimeout(() => setImportResult(null), 3000);
+    } catch (err) {
+      setImportResult('导出失败：' + String(err));
+      setTimeout(() => setImportResult(null), 3000);
+    }
+  }, []);
+
   return (
     <PageContainer className="bg-[#953737] relative">
       {/* 网格背景 */}
@@ -359,6 +380,7 @@ export function SchedulePage() {
             onToday={handleToday}
             onCreateEvent={handleCreateClick}
             onImportIcs={handleImportIcs}
+            onExportIcs={handleExportIcs}
           />
 
           {/* 导入结果提示 */}
@@ -440,14 +462,28 @@ export function SchedulePage() {
         className="hidden"
       />
 
-      {/* 底部装饰 */}
-      <div className="absolute bottom-0 left-0 pointer-events-none">
-        <img
-          src="/assets/CodeBuddyAssets/47_57/11.png"
-          alt="装饰"
-          className="w-[180px] h-auto"
-        />
-      </div>
+      {/* 左下角提灯按钮 */}
+      <button
+        onClick={() => setShowAiPanel(true)}
+        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
+        title="AI 建议"
+      >
+        <div className="w-11 h-11">
+          <LanternSvg />
+        </div>
+      </button>
+
+      {/* AI 建议弹窗 */}
+      <MascotModal
+        show={showAiPanel}
+        onClose={() => setShowAiPanel(false)}
+        title="日程助手"
+      >
+        <div className="text-center py-8">
+          <p className="font-zhuque text-lg">AI 日程建议即将上线</p>
+          <p className="font-zhuque text-sm mt-2 opacity-60">让提灯帮你分析时间安排</p>
+        </div>
+      </MascotModal>
     </PageContainer>
   );
 }

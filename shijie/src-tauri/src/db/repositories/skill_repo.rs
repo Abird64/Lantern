@@ -163,3 +163,37 @@ pub fn set_task_skills(
 
     Ok(())
 }
+
+/// XP → 等级换算：累计 XP 达到 100 × N × (N-1) / 2 时升到 Lv.N
+/// Lv.1=0, Lv.2=100, Lv.3=300, Lv.4=600, Lv.5=1000, ...
+fn xp_to_level(total_xp: i32) -> i32 {
+    let mut cumulative = 0i32;
+    for n in 1i32.. {
+        cumulative = cumulative.saturating_add(100 * n);
+        if total_xp < cumulative {
+            return n;
+        }
+    }
+    1
+}
+
+/// 检查并升级技能等级（在 XP 增加后调用）
+pub fn check_level_up(conn: &Connection, skill_id: &str) -> Result<(), String> {
+    let (total_xp, current_level): (i32, i32) = conn
+        .query_row(
+            "SELECT total_xp, level FROM skills WHERE id = ?1",
+            params![skill_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("查询技能等级失败: {}", e))?;
+
+    let new_level = xp_to_level(total_xp);
+    if new_level > current_level {
+        conn.execute(
+            "UPDATE skills SET level = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new_level, now(), skill_id],
+        )
+        .map_err(|e| format!("升级技能失败: {}", e))?;
+    }
+    Ok(())
+}

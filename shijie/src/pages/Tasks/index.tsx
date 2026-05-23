@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Circle, Plus, X, Check, Pencil, Trash2, Search, ArrowUpDown, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
-import { CapsuleTabs, NavBar, themes, SKILL_COLORS, SKILL_ORDER } from '@/components/ui';
+import { CapsuleTabs, NavBar, themes, SKILL_COLORS, SKILL_ORDER, LanternSvg, MascotModal } from '@/components/ui';
 import { useTaskStore } from '@/stores/taskStore';
 import { useWeightsStore } from '@/stores/weightsStore';
 import { useSkillStore } from '@/stores/skillStore';
@@ -150,7 +150,8 @@ export function TasksPage() {
   const [newDescription, setNewDescription] = useState('');
   const [newSkillXps, setNewSkillXps] = useState<Record<string, number>>({});
   const [toast, setToast] = useState<string>('');
-  const [pandaTip, setPandaTip] = useState<string>('');
+  const [showRecommendModal, setShowRecommendModal] = useState(false);
+  const [recommendText, setRecommendText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 详情面板
@@ -1283,36 +1284,36 @@ export function TasksPage() {
         </div>
       )}
 
-      {/* 左下角熊猫 - 任务推荐 */}
-      <div className="absolute bottom-6 left-8 z-10 flex items-end gap-3">
-        <button
-          onClick={() => {
-            const best = recommendTask(tasks, weights);
-            if (best) {
-              const s = scoreTask(best, weights);
-              setPandaTip(`推荐「${best.title}」（评分 ${(s * 100).toFixed(0)}）`);
-              setTimeout(() => setPandaTip(''), 4000);
-            } else {
-              setPandaTip('暂无可推荐的任务');
-              setTimeout(() => setPandaTip(''), 2000);
-            }
-          }}
-          className="opacity-60 hover:opacity-100 transition-opacity"
-          title="推荐最优任务"
-        >
-          <img
-            src="/assets/CodeBuddyAssets/47_57/10.png"
-            alt="推荐任务"
-            className="w-[180px] h-auto object-contain"
-          />
-        </button>
-        {pandaTip && (
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-lg text-sm text-black/70 max-w-[280px] mb-6 relative">
-            {pandaTip}
-            <div className="absolute left-[-6px] bottom-3 w-3 h-3 bg-white/90 rotate-45" />
-          </div>
-        )}
-      </div>
+      {/* 左下角提灯按钮 - 任务推荐 */}
+      <button
+        onClick={() => {
+          const best = recommendTask(tasks, weights);
+          if (best) {
+            const s = scoreTask(best, weights);
+            setRecommendText(`推荐「${best.title}」（评分 ${(s * 100).toFixed(0)}）`);
+          } else {
+            setRecommendText('暂无可推荐的任务');
+          }
+          setShowRecommendModal(true);
+        }}
+        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
+        title="推荐最优任务"
+      >
+        <div className="w-11 h-11">
+          <LanternSvg />
+        </div>
+      </button>
+
+      {/* 任务推荐弹窗 */}
+      <MascotModal
+        show={showRecommendModal}
+        onClose={() => setShowRecommendModal(false)}
+        title="今日推荐"
+      >
+        <div className="text-center py-8">
+          <p className="font-zhuque text-lg">{recommendText}</p>
+        </div>
+      </MascotModal>
 
       {/* 右下角加号按钮 */}
       {!multiSelectMode && (

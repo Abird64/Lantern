@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Conversation, AiMessage } from '@/types/ai';
+import { parseToolCalls } from '@/types/ai';
 import * as aiService from '@/services/aiService';
 
 /** 用于中断正在进行的 AI 请求 */
@@ -21,6 +22,7 @@ interface AiState {
   sendMessage: (content: string) => Promise<void>;
   stopGeneration: () => void;
   executeToolCalls: (messageId: string) => Promise<void>;
+  executeSingleToolCall: (messageId: string, toolCallId: string) => Promise<void>;
   cancelToolCalls: (messageId: string) => Promise<void>;
   modifyToolCalls: (feedback: string) => Promise<void>;
   clearError: () => void;
@@ -136,6 +138,38 @@ export const useAiStore = create<AiState>((set, get) => ({
     set({ isExecuting: true, error: null });
     try {
       const updatedMessages = await aiService.executeToolCalls(currentConversation, messageId);
+      set({ messages: updatedMessages, isExecuting: false });
+    } catch (e) {
+      set({ error: String(e), isExecuting: false });
+    }
+  },
+
+  executeSingleToolCall: async (messageId: string, toolCallId: string) => {
+    const { currentConversation } = get();
+    if (!currentConversation) return;
+
+    set({ isExecuting: true, error: null });
+    try {
+      let updatedMessages = await aiService.executeSingleToolCall(
+        currentConversation,
+        messageId,
+        toolCallId,
+      );
+
+      // 检查该消息的所有 tool_calls 是否都已执行完毕
+      const msg = updatedMessages.find((m) => m.id === messageId);
+      if (msg?.tool_calls) {
+        const toolCalls = parseToolCalls(msg.tool_calls);
+        const allExecuted = toolCalls.every((tc) =>
+          updatedMessages.some(
+            (m) => m.role === 'tool' && m.tool_call_id === tc.id,
+          ),
+        );
+        if (allExecuted) {
+          updatedMessages = await aiService.finalizeToolCalls(currentConversation);
+        }
+      }
+
       set({ messages: updatedMessages, isExecuting: false });
     } catch (e) {
       set({ error: String(e), isExecuting: false });

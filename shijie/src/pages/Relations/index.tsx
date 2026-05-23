@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, Sparkles } from 'lucide-react';
-import { NavBar, CapsuleTabs, LanternSvg, themes } from '@/components/ui';
+import { Plus, X, Trash2 } from 'lucide-react';
+import { NavBar, CapsuleTabs, LanternSvg, themes, MascotModal } from '@/components/ui';
 import { useContactStore } from '@/stores/contactStore';
 import type { Contact } from '@/types/contact';
 
@@ -323,13 +323,13 @@ export function RelationsPage() {
         </div>
       </div>
 
-      {/* 左下角灯笼按钮（AI 建议） */}
+      {/* 左下角提灯按钮（AI 建议） */}
       <button
         onClick={() => setShowAiPanel(true)}
-        className="fixed bottom-6 left-6 z-30 w-14 h-14 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer"
+        className="fixed bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
         title="AI 建议"
       >
-        <div className="w-14 h-14">
+        <div className="w-11 h-11">
           <LanternSvg />
         </div>
       </button>
@@ -343,38 +343,17 @@ export function RelationsPage() {
         <Plus size={28} strokeWidth={2.5} />
       </button>
 
-      {/* ========== AI 建议面板（占位） ========== */}
-      {showAiPanel && (
-        <div className="fixed inset-0 z-50 flex items-end justify-start pl-6 pb-24">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setShowAiPanel(false)}
-          />
-          <div
-            className="relative w-full max-w-[400px] rounded-3xl shadow-2xl p-8 mx-4"
-            style={{ backgroundColor: theme.card }}
-          >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <Sparkles size={20} style={{ color: theme.accent }} />
-                <h2 className="text-xl font-zhuque" style={{ color: theme.text }}>提灯问路</h2>
-              </div>
-              <button
-                onClick={() => setShowAiPanel(false)}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity"
-                style={{ backgroundColor: `${theme.text}15` }}
-              >
-                <X size={16} style={{ color: theme.text }} />
-              </button>
-            </div>
-            <div className="text-center py-8" style={{ color: `${theme.text}55` }}>
-              <Sparkles size={32} className="mx-auto mb-3 opacity-40" />
-              <p className="font-zhuque text-lg">AI 建议功能即将上线</p>
-              <p className="font-zhuque text-sm mt-2 opacity-60">谁快过生日了？该联系谁了？</p>
-            </div>
-          </div>
+      {/* ========== AI 建议面板 ========== */}
+      <MascotModal
+        show={showAiPanel}
+        onClose={() => setShowAiPanel(false)}
+        title="人脉洞察"
+      >
+        <div className="text-center py-8">
+          <p className="font-zhuque text-lg">AI 建议功能即将上线</p>
+          <p className="font-zhuque text-sm mt-2 opacity-60">谁快过生日了？该联系谁了？</p>
         </div>
-      )}
+      </MascotModal>
 
       {/* ========== 创建联系人弹窗 ========== */}
       {showCreate && (

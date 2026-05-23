@@ -56,3 +56,8 @@ export async function importIcsEvents(events: Array<{
 }>): Promise<{ success: boolean; imported: number; skipped: number; total: number }> {
   return tauriInvoke('import_ics_events', { events });
 }
+
+/** 导出日程为 ICS 文本 */
+export async function exportIcsEvents(): Promise<string> {
+  return tauriInvoke<string>('export_ics_events');
+}

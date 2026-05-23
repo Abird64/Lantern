@@ -143,24 +143,39 @@ pub async fn chat_completion(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("AI 请求失败: {}", e))?;
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            if err_msg.contains("timeout") || err_msg.contains("Timeout") {
+                "AI 请求超时，请检查网络或稍后重试".to_string()
+            } else if err_msg.contains("refused") || err_msg.contains("resolve") || err_msg.contains("dns") {
+                "无法连接 AI 服务，请检查网络或 API 地址".to_string()
+            } else {
+                format!("AI 请求失败: {}", err_msg)
+            }
+        })?;
 
     let status = resp.status();
     if !status.is_success() {
         let err_text = resp.text().await.unwrap_or_default();
-        return Err(format!("AI API 返回错误 {}: {}", status, err_text));
+        let msg = match status.as_u16() {
+            401 | 403 => "API Key 无效，请在设置中检查".to_string(),
+            429 => "请求太频繁，请稍后再试".to_string(),
+            500..=599 => format!("AI 服务暂时不可用（{}），请稍后重试", status.as_u16()),
+            _ => format!("AI API 返回错误 {}: {}", status.as_u16(), err_text),
+        };
+        return Err(msg);
     }
 
     let chat_resp: ChatResponse = resp
         .json()
         .await
-        .map_err(|e| format!("AI 响应解析失败: {}", e))?;
+        .map_err(|e| format!("AI 返回了无法识别的数据格式: {}", e))?;
 
     let msg = chat_resp
         .choices
         .into_iter()
         .next()
-        .ok_or("AI 响应为空")?;
+        .ok_or("AI 未返回有效内容，请重试".to_string())?;
 
     // 转换 tool_calls 为 Value 数组，方便存 DB 和传前端
     let tool_calls_value: Option<Vec<Value>> =

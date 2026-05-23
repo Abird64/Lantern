@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import { Check, X, Clock, Tag, Trash2, Loader2, CircleCheck, Search, List, Send, Pencil } from 'lucide-react';
+import { Check, X, Trash2, Loader2, CircleCheck, Search, Send, Pencil, Zap } from 'lucide-react';
 import type { ToolCallDef } from '@/types/ai';
-import { parseCreateTaskArgs, parseQueryArgs, parseSearchArgs, PRIORITY_LABELS, PRIORITY_COLORS, STATUS_LABELS } from '@/types/ai';
+import { parseGenericArgs, TOOL_LABELS } from '@/types/ai';
+import { SKILL_COLORS } from '@/styles/theme';
+
+/** skill_id → 中文名 */
+const SKILL_NAME_MAP: Record<string, string> = {};
+for (const [id, info] of Object.entries(SKILL_COLORS)) {
+  SKILL_NAME_MAP[id] = info.name;
+}
 
 interface ToolCallCardProps {
   toolCall: ToolCallDef;
@@ -9,209 +16,229 @@ interface ToolCallCardProps {
   onConfirm: () => void;
   onCancel: () => void;
   onModify?: (feedback: string) => void;
+  info?: { group: string; label: string; color: string };
 }
 
 export function ToolCallCard(props: ToolCallCardProps) {
   const { toolCall } = props;
 
-  switch (toolCall.function.name) {
-    case 'create_task':
-      return <CreateTaskCard {...props} />;
-    case 'complete_task':
-      return <CompleteTaskCard {...props} />;
-    case 'delete_task':
-      return <DeleteTaskCard {...props} />;
-    case 'search_tasks':
-      return <SearchTaskCard {...props} />;
+  const info = TOOL_LABELS[toolCall.function.name];
+  if (!info) {
+    return (
+      <div className="mt-2 p-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-xs">
+        未知操作: {toolCall.function.name}
+      </div>
+    );
+  }
+
+  switch (info.group) {
+    case '创建':
+      return <CreateCard {...props} info={info} />;
+    case '执行':
+      return <ExecuteCard {...props} info={info} />;
+    case '删除':
+      return <DeleteCard {...props} info={info} />;
+    case '修改':
+      return <UpdateCard {...props} info={info} />;
+    case '查询':
+      return <QueryCard {...props} info={info} />;
     default:
-      return (
-        <div className="mt-2 p-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-xs">
-          未知操作: {toolCall.function.name}
-        </div>
-      );
+      return <GenericCard {...props} info={info} />;
   }
 }
 
-// ========== 创建任务 ==========
+// ========== 分组卡片：创建类 ==========
 
-function CreateTaskCard({ toolCall, isExecuting, onConfirm, onCancel, onModify }: ToolCallCardProps) {
-  const params = parseCreateTaskArgs(toolCall);
+function CreateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
   const [modifyMode, setModifyMode] = useState(false);
 
+  // 提取展示字段
+  const title = (params.title as string) || (params.name as string) || '';
+  const detailLines = buildDetailLines(toolCall.function.name, params);
+
   return (
-    <div className="mt-2 rounded-xl bg-[#1E2A1E]/60 border border-[#58A968]/30 overflow-hidden">
-      <CardHeader icon={<Check size={12} />} color="#58A968" title="创建任务" />
-      <div className="px-4 py-3 space-y-2.5">
-        <div>
-          <span className="text-white/80 text-sm font-medium">{params.title}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {params.priority && params.priority !== 'none' && (
-            <span className={`text-xs px-1.5 py-0.5 rounded ${PRIORITY_COLORS[params.priority]}`}>
-              {PRIORITY_LABELS[params.priority]}
-            </span>
-          )}
-          {params.deadline && (
-            <span className="inline-flex items-center gap-1 text-xs text-white/40">
-              <Clock size={11} />
-              {formatDate(params.deadline)}
-            </span>
-          )}
-          {params.estimated_minutes && (
-            <span className="text-xs text-white/40">~{formatMinutes(params.estimated_minutes)}</span>
-          )}
-        </div>
-        {params.tags && (
-          <div className="flex items-center gap-1.5">
-            <Tag size={11} className="text-white/30" />
-            <div className="flex flex-wrap gap-1">
-              {parseTags(params.tags).map((tag, i) => (
-                <span key={i} className="text-xs px-1.5 py-0.5 rounded bg-white/8 text-white/40">{tag}</span>
-              ))}
-            </div>
+    <div className={`mt-2 rounded-xl bg-[#1E2A1E]/60 border overflow-hidden`} style={{ borderColor: `${info?.color || '#58A968'}30` }}>
+      <CardHeader icon={<Check size={12} />} color={info?.color || '#58A968'} title={info?.label || '创建'} />
+      <div className="px-4 py-3 space-y-2">
+        {title ? <div><span className="text-white/80 text-sm font-medium">{title}</span></div> : null}
+        {detailLines.map((line, i) => (
+          <p key={i} className="text-xs text-white/40">{line}</p>
+        ))}
+      </div>
+      {modifyMode ? (
+        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
+      ) : (
+        <CardActions
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
+          confirmLabel="确认" confirmColor={info?.color || '#58A968'}
+          borderColor={`${info?.color || '#58A968'}/20`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== 分组卡片：执行类（完成/确认） ==========
+
+function ExecuteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
+  const [modifyMode, setModifyMode] = useState(false);
+  const query = (params.query as string) || '';
+  const detailLines = buildDetailLines(toolCall.function.name, params);
+
+  return (
+    <div className={`mt-2 rounded-xl bg-[#232C1E]/60 border overflow-hidden`} style={{ borderColor: `${info?.color || '#7CB342'}30` }}>
+      <CardHeader icon={<CircleCheck size={12} />} color={info?.color || '#7CB342'} title={info?.label || '执行'} />
+      <div className="px-4 py-3 space-y-2">
+        {query ? (
+          <div className="flex items-center gap-2">
+            <span className="text-white/50 text-xs">搜索：</span>
+            <span className="text-white/80 text-sm font-medium">"{query}"</span>
           </div>
+        ) : null}
+        {detailLines.map((line, i) => (
+          <p key={i} className="text-xs text-white/40">{line}</p>
+        ))}
+      </div>
+      {modifyMode ? (
+        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
+      ) : (
+        <CardActions
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
+          confirmLabel="确认" confirmColor={info?.color || '#7CB342'}
+          borderColor={`${info?.color || '#7CB342'}/20`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== 分组卡片：删除类 ==========
+
+function DeleteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
+  const [modifyMode, setModifyMode] = useState(false);
+  const query = (params.query as string) || '';
+
+  return (
+    <div className={`mt-2 rounded-xl bg-[#2A1E1E]/60 border overflow-hidden`} style={{ borderColor: `${info?.color || '#E65C5C'}30` }}>
+      <CardHeader icon={<Trash2 size={12} />} color={info?.color || '#E65C5C'} title={info?.label || '删除'} />
+      <div className="px-4 py-3 space-y-2">
+        {query ? (
+          <div className="flex items-center gap-2">
+            <span className="text-white/50 text-xs">搜索：</span>
+            <span className="text-white/80 text-sm font-medium">"{query}"</span>
+          </div>
+        ) : null}
+        <p className="text-xs text-red-400/60">此操作不可撤销，请确认</p>
+      </div>
+      {modifyMode ? (
+        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
+      ) : (
+        <CardActions
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
+          confirmLabel="确认删除" confirmColor={info?.color || '#E65C5C'}
+          borderColor={`${info?.color || '#E65C5C'}/20`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== 分组卡片：修改类 ==========
+
+function UpdateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
+  const [modifyMode, setModifyMode] = useState(false);
+  const query = (params.query as string) || '';
+  const detailLines = buildDetailLines(toolCall.function.name, params);
+
+  return (
+    <div className={`mt-2 rounded-xl bg-[#2A2416]/60 border overflow-hidden`} style={{ borderColor: `${info?.color || '#E8B959'}30` }}>
+      <CardHeader icon={<Pencil size={12} />} color={info?.color || '#E8B959'} title={info?.label || '修改'} />
+      <div className="px-4 py-3 space-y-2">
+        {query ? (
+          <div className="flex items-center gap-2">
+            <span className="text-white/50 text-xs">搜索：</span>
+            <span className="text-white/80 text-sm font-medium">"{query}"</span>
+          </div>
+        ) : null}
+        {detailLines.map((line, i) => (
+          <p key={i} className="text-xs text-white/40">{line}</p>
+        ))}
+      </div>
+      {modifyMode ? (
+        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
+      ) : (
+        <CardActions
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
+          confirmLabel="确认修改" confirmColor={info?.color || '#E8B959'}
+          borderColor={`${info?.color || '#E8B959'}/20`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== 分组卡片：查询类 ==========
+
+function QueryCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
+  const [modifyMode, setModifyMode] = useState(false);
+  const query = (params.query as string) || (params.date as string) || '';
+  const detailLines = buildDetailLines(toolCall.function.name, params);
+
+  return (
+    <div className={`mt-2 rounded-xl bg-[#1E2432]/60 border overflow-hidden`} style={{ borderColor: `${info?.color || '#6B9BD2'}30` }}>
+      <CardHeader icon={<Search size={12} />} color={info?.color || '#6B9BD2'} title={info?.label || '查询'} />
+      <div className="px-4 py-3 space-y-2">
+        {query ? (
+          <span className="text-white/80 text-sm font-medium">"{query}"</span>
+        ) : (
+          <span className="text-white/50 text-sm">查询</span>
         )}
-        {params.description && (
-          <p className="text-xs text-white/40 leading-relaxed">{params.description}</p>
-        )}
+        {detailLines.map((line, i) => (
+          <p key={i} className="text-xs text-white/40">{line}</p>
+        ))}
       </div>
       {modifyMode ? (
         <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
       ) : (
         <CardActions
-          isExecuting={isExecuting}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="确认"
-          confirmColor="#58A968"
-          borderColor="#58A968/20"
+          confirmLabel="执行" confirmColor={info?.color || '#6B9BD2'}
+          borderColor={`${info?.color || '#6B9BD2'}/20`}
         />
       )}
     </div>
   );
 }
 
-// ========== 完成任务 ==========
+// ========== 兜底卡片 ==========
 
-function CompleteTaskCard({ toolCall, isExecuting, onConfirm, onCancel, onModify }: ToolCallCardProps) {
-  const params = parseQueryArgs(toolCall);
-  const [modifyMode, setModifyMode] = useState(false);
-
-  return (
-    <div className="mt-2 rounded-xl bg-[#232C1E]/60 border border-[#7CB342]/30 overflow-hidden">
-      <CardHeader icon={<CircleCheck size={12} />} color="#7CB342" title="完成任务" />
-      <div className="px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-white/50 text-xs">搜索关键词：</span>
-          <span className="text-white/80 text-sm font-medium">"{params.query}"</span>
-        </div>
-        <p className="text-xs text-white/30">
-          将搜索匹配的待办任务并标记为完成
-        </p>
-      </div>
-      {modifyMode ? (
-        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
-      ) : (
-        <CardActions
-          isExecuting={isExecuting}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="确认完成"
-          confirmColor="#7CB342"
-          borderColor="#7CB342/20"
-        />
-      )}
-    </div>
-  );
-}
-
-// ========== 删除任务 ==========
-
-function DeleteTaskCard({ toolCall, isExecuting, onConfirm, onCancel, onModify }: ToolCallCardProps) {
-  const params = parseQueryArgs(toolCall);
-  const [modifyMode, setModifyMode] = useState(false);
+function GenericCard({ toolCall, isExecuting, onConfirm, onCancel, info }: ToolCallCardProps) {
+  const params = parseGenericArgs(toolCall);
+  const detailLines = buildDetailLines(toolCall.function.name, params);
 
   return (
-    <div className="mt-2 rounded-xl bg-[#2A1E1E]/60 border border-red-500/30 overflow-hidden">
-      <CardHeader icon={<Trash2 size={12} />} color="#E65C5C" title="删除任务" />
+    <div className="mt-2 rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+      <CardHeader icon={<Zap size={12} />} color={info?.color || '#888'} title={info?.label || toolCall.function.name} />
       <div className="px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-white/50 text-xs">搜索关键词：</span>
-          <span className="text-white/80 text-sm font-medium">"{params.query}"</span>
-        </div>
-        <p className="text-xs text-red-400/60">此操作不可撤销，请确认任务名称匹配</p>
+        {detailLines.map((line, i) => (
+          <p key={i} className="text-xs text-white/40">{line}</p>
+        ))}
       </div>
-      {modifyMode ? (
-        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
-      ) : (
-        <CardActions
-          isExecuting={isExecuting}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="确认删除"
-          confirmColor="#E65C5C"
-          borderColor="red-500/20"
-        />
-      )}
-    </div>
-  );
-}
-
-// ========== 搜索/查看任务 ==========
-
-function SearchTaskCard({ toolCall, isExecuting, onConfirm, onCancel, onModify }: ToolCallCardProps) {
-  const params = parseSearchArgs(toolCall);
-  const hasQuery = params.query && params.query.trim().length > 0;
-  const hasStatus = params.status && params.status.length > 0;
-  const [modifyMode, setModifyMode] = useState(false);
-
-  return (
-    <div className="mt-2 rounded-xl bg-[#1E2432]/60 border border-[#6B9BD2]/30 overflow-hidden">
-      <CardHeader icon={<Search size={12} />} color="#6B9BD2" title="查看任务" />
-      <div className="px-4 py-3 space-y-2">
-        {/* 搜索条件 */}
-        <div className="flex flex-wrap items-center gap-2">
-          {hasQuery ? (
-            <span className="text-white/80 text-sm font-medium">"{params.query}"</span>
-          ) : (
-            <span className="text-white/50 text-sm">列出所有任务</span>
-          )}
-          {hasStatus && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-[#6B9BD2]/15 text-[#6B9BD2]">
-              {STATUS_LABELS[params.status!] || params.status}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-white/30">
-          {hasQuery ? (
-            <>
-              <Search size={11} />
-              按标题/描述/备注搜索
-            </>
-          ) : (
-            <>
-              <List size={11} />
-              返回全部任务，按状态排序
-            </>
-          )}
-        </div>
-      </div>
-      {modifyMode ? (
-        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
-      ) : (
-        <CardActions
-          isExecuting={isExecuting}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="查看"
-          confirmColor="#6B9BD2"
-          borderColor="#6B9BD2/20"
-        />
-      )}
+      <CardActions
+        isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+        confirmLabel="确认" confirmColor={info?.color || '#888'}
+        borderColor="white/10"
+      />
     </div>
   );
 }
@@ -320,32 +347,73 @@ function CardModifyInput({ onSubmit, onBack }: { onSubmit: (text: string) => voi
 
 // ========== 工具函数 ==========
 
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
-    if (iso.includes('T')) {
-      return `${dateStr} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** 从通用参数中提取关键展示字段 */
+function buildDetailLines(toolName: string, params: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+
+  // 忽略 query 字段（已在卡片标题区展示）
+  const skip = new Set(['query', 'title', 'name', 'content']);
+
+  for (const [key, value] of Object.entries(params)) {
+    if (skip.has(key)) continue;
+    if (value === null || value === undefined || value === '') continue;
+    if (key === 'status' || key === 'priority') continue; // 展示在 badge 区
+
+    // XP 分配特殊处理
+    if (key === 'xp_allocations' && Array.isArray(value)) {
+      const xpParts = (value as Array<{ skill_id: string; xp_amount: number }>)
+        .map((a) => `${SKILL_NAME_MAP[a.skill_id] || a.skill_id}+${a.xp_amount}`)
+        .join('  ');
+      if (xpParts) lines.push(`XP：${xpParts}`);
+      continue;
     }
-    return dateStr;
-  } catch {
-    return iso;
+
+    const label = FIELD_LABELS[key] || key;
+    const formatted = formatValue(key, value);
+    if (formatted) {
+      lines.push(`${label}：${formatted}`);
+    }
   }
+
+  return lines.slice(0, 8); // 最多展示8行
 }
 
-function formatMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes}分钟`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+function formatValue(key: string, value: unknown): string {
+  if (typeof value === 'string') {
+    // 截断过长的字符串
+    if (value.length > 100) return value.slice(0, 100) + '...';
+    return value;
+  }
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) return value.join('、');
+  if (typeof value === 'object') return JSON.stringify(value).slice(0, 80);
+  return String(value);
 }
 
-function parseTags(tagsStr: string): string[] {
-  try {
-    const parsed = JSON.parse(tagsStr);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+const FIELD_LABELS: Record<string, string> = {
+  description: '描述',
+  scheduled_at: '计划时间',
+  deadline: '截止时间',
+  estimated_minutes: '预估耗时(分钟)',
+  notes: '备注',
+  tags: '标签',
+  start_at: '开始时间',
+  end_at: '结束时间',
+  is_all_day: '全天',
+  location: '地点',
+  category: '分类',
+  rrule: '重复规则',
+  reminder: '提醒(分钟前)',
+  date: '日期',
+  mood: '心情',
+  content: '内容',
+  start_date: '开始日期',
+  end_date: '结束日期',
+  nickname: '昵称',
+  group_name: '分组',
+  birthday: '生日',
+  contact_info: '联系方式',
+  year: '年',
+  month: '月',
+};

@@ -1,21 +1,24 @@
-import { useEffect } from 'react';
-import { NavBar } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { NavBar, LanternSvg, MascotModal } from '@/components/ui';
 import { useSkillStore } from '@/stores/skillStore';
 import { SKILL_COLORS, SKILL_ORDER, themes } from '@/styles/theme';
 
 const theme = themes.skills;
 
-/** 等级信息：每100 XP 升一级 */
-function getLevelInfo(totalXp: number) {
-  const xpPerLevel = 100;
-  const level = Math.floor(totalXp / xpPerLevel) + 1;
-  const currentXp = totalXp % xpPerLevel;
-  const progress = currentXp / xpPerLevel;
-  return { level, currentXp, xpToNext: xpPerLevel - currentXp, progress };
+/** 等级信息：根据后端返回的 level 和 total_xp 计算进度 */
+function getLevelInfo(totalXp: number, level: number) {
+  // 当前等级需要的起始XP: 100 × level × (level-1) / 2
+  const xpAtLevelStart = 100 * level * (level - 1) / 2;
+  // 升到下一级需要的XP: 100 × level
+  const xpForNextLevel = 100 * level;
+  const currentLevelXp = totalXp - xpAtLevelStart;
+  const progress = Math.min(currentLevelXp / xpForNextLevel, 1);
+  return { level, currentXp: currentLevelXp, xpToNext: xpForNextLevel - currentLevelXp, progress };
 }
 
 export function SkillsPage() {
   const { skills, fetchSkills } = useSkillStore();
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   useEffect(() => {
     fetchSkills();
@@ -55,7 +58,8 @@ export function SkillsPage() {
             const info = SKILL_COLORS[skillId];
             const skill = skills.find((s) => s.id === skillId);
             const totalXp = skill?.total_xp ?? 0;
-            const { level, currentXp, progress } = getLevelInfo(totalXp);
+            const skillLevel = skill?.level ?? 1;
+            const { level, currentXp, progress } = getLevelInfo(totalXp, skillLevel);
 
             return (
               <div
@@ -97,7 +101,7 @@ export function SkillsPage() {
                 </div>
 
                 <div className="flex justify-between text-sm" style={{ color: theme.text + '80' }}>
-                  <span>{currentXp} / 100 XP</span>
+                  <span>{currentXp} / {100 * level} XP</span>
                   <span>总计: {totalXp} XP</span>
                 </div>
               </div>
@@ -105,6 +109,29 @@ export function SkillsPage() {
           })}
         </div>
       </div>
+
+      {/* 左下角提灯按钮 */}
+      <button
+        onClick={() => setShowAiPanel(true)}
+        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
+        title="AI 建议"
+      >
+        <div className="w-11 h-11">
+          <LanternSvg />
+        </div>
+      </button>
+
+      {/* AI 建议弹窗 */}
+      <MascotModal
+        show={showAiPanel}
+        onClose={() => setShowAiPanel(false)}
+        title="修为助手"
+      >
+        <div className="text-center py-8">
+          <p className="font-zhuque text-lg">XP 系统由日常行为自动积累</p>
+          <p className="font-zhuque text-sm mt-2 opacity-60">完成任务、写日记、日记回顾都会获得修为</p>
+        </div>
+      </MascotModal>
     </div>
   );
 }

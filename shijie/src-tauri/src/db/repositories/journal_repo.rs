@@ -345,11 +345,27 @@ pub fn save_ai_diary_meta(
     .map_err(|e| format!("Failed to retrieve created ai journal: {}", e))
 }
 
-/// 日记 XP 结算：创建虚拟任务 + 完成 → 复用 complete_task 流程
-/// 返回 (xp_earned, skill_xps)
+/// 日记 XP 结算（默认分配：6属性各+1）
+/// 每日一次，日省按钮直接调用此函数
 pub fn complete_diary(
     conn: &mut Connection,
     date: &str,
+) -> Result<super::task_repo::CompleteResult, String> {
+    let default_allocations: Vec<(String, i32)> = [
+        "knowledge", "physique", "charm", "talent", "worldliness", "cultivation",
+    ]
+    .iter()
+    .map(|s| (s.to_string(), 1))
+    .collect();
+    complete_diary_with_xp(conn, date, &default_allocations)
+}
+
+/// 日记 XP 结算（AI 指定分配）
+/// allocations: [(skill_id, xp_amount)]，总XP 3-10，单属性上限5
+pub fn complete_diary_with_xp(
+    conn: &mut Connection,
+    date: &str,
+    allocations: &[(String, i32)],
 ) -> Result<super::task_repo::CompleteResult, String> {
     let task_title = format!("{} 日省", date);
 
@@ -379,21 +395,12 @@ pub fn complete_diary(
     )
     .map_err(|e| format!("Failed to create diary task: {}", e))?;
 
-    // 分配 XP（默认每项属性 +1，后续由 AI 判断分配）
-    let default_skills = [
-        "knowledge",
-        "physique",
-        "charm",
-        "talent",
-        "worldliness",
-        "cultivation",
-    ];
-
-    for skill_id in &default_skills {
+    // 写入 AI 分配的 XP
+    for (skill_id, xp_amount) in allocations {
         let link_id = gen_id();
         conn.execute(
-            "INSERT INTO task_skills (id, task_id, skill_id, xp_amount) VALUES (?1, ?2, ?3, 1)",
-            params![link_id, task_id, skill_id],
+            "INSERT INTO task_skills (id, task_id, skill_id, xp_amount) VALUES (?1, ?2, ?3, ?4)",
+            params![link_id, task_id, skill_id, xp_amount],
         )
         .map_err(|e| format!("Failed to link diary task skill: {}", e))?;
     }

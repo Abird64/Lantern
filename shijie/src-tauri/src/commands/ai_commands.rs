@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::ai::client;
 use crate::ai::{prompts, tool_executor, tools};
-use crate::db::connection::DbState;
+use crate::db::connection::{AppDataState, DbState};
 use crate::db::repositories::{ai_repo, setting_repo};
 
 fn get_setting_or(conn: &rusqlite::Connection, key: &str, fallback: &str) -> String {
@@ -55,28 +55,23 @@ pub fn list_messages(
     ai_repo::list_messages(&conn, &conversation_id)
 }
 
-/// 核心命令：发送用户消息 → 调用 AI → 保存 AI 回复 → 返回 AI 回复
+/// 核心命令：发送用户消息 → 调用 AI → 自动执行查询工具 → 保存最终回复
 #[tauri::command]
 pub async fn send_message(
     state: State<'_, DbState>,
     conversation_id: String,
     content: String,
 ) -> Result<ai_repo::Message, String> {
-    // 1. 保存用户消息 + 读取消息历史 + 构建系统提示词 + 读取配置，然后释放锁
-    let (chat_messages, config, tool_defs) = {
+    // 1. 保存用户消息 + 构建系统提示词 + 读取配置，然后释放锁
+    let (mut chat_messages, config, tool_defs) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
-        // 保存用户消息
         ai_repo::create_message(&conn, &conversation_id, "user", Some(&content), None, None, None)?;
 
-        // 构建系统提示词
         let personality = get_setting_or(&conn, "ai.personality", "你是一个温暖的人生管理助手，名叫提灯。");
         let system_prompt = prompts::build_system_prompt(&personality);
 
-        // 构建消息列表：系统提示词 + 历史消息
         let mut chat_messages: Vec<client::ChatMessage> = Vec::new();
-
-        // 系统提示词永远在第一条
         chat_messages.push(client::ChatMessage {
             role: "system".to_string(),
             content: Some(system_prompt),
@@ -86,15 +81,12 @@ pub async fn send_message(
             reasoning_content: None,
         });
 
-        // 追加历史消息
         let db_messages = ai_repo::list_messages(&conn, &conversation_id)?;
         for m in &db_messages {
-            // 解析历史消息中的 tool_calls（如果有）
             let tc: Option<Vec<serde_json::Value>> = m
                 .tool_calls
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok());
-
             chat_messages.push(client::ChatMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
@@ -105,10 +97,7 @@ pub async fn send_message(
             });
         }
 
-        // 获取工具定义
         let tool_defs = tools::get_tools();
-
-        // 读取 AI 配置
         let config = client::AiConfig {
             api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com/v1"),
             api_key: get_setting_or(&conn, "ai.api_key", ""),
@@ -116,13 +105,84 @@ pub async fn send_message(
         };
 
         (chat_messages, config, tool_defs)
-        // 锁在此释放
     };
 
     // 2. 调用 AI（不持有锁，带工具定义）
-    let ai_reply = client::chat_completion(&config, chat_messages, Some(tool_defs)).await?;
+    let mut ai_reply = client::chat_completion(&config, chat_messages.clone(), Some(tool_defs.clone())).await?;
 
-    // 3. 保存 AI 回复（含 tool_calls）
+    // 3. 自动执行查询工具的循环（最多3轮，防止无限循环）
+    const MAX_AUTO_ROUNDS: usize = 3;
+    for _round in 0..MAX_AUTO_ROUNDS {
+        let current_tool_calls = match &ai_reply.tool_calls {
+            Some(tc) if !tc.is_empty() => tc.clone(),
+            _ => break,
+        };
+
+        // 解析为 ToolCall 以检查工具类型
+        let parsed_tc: Vec<tools::ToolCall> = serde_json::from_str(
+            &serde_json::to_string(&current_tool_calls).unwrap_or_default()
+        ).unwrap_or_default();
+
+        // 检查是否全是查询工具（只读、安全，无需用户确认）
+        let all_query = parsed_tc.iter().all(|tc| tools::is_query_tool(&tc.function.name));
+        if !all_query {
+            break;
+        }
+
+        // 保存 AI 的这条回复（含查询 tool_calls）
+        let tc_json = serde_json::to_string(&current_tool_calls).unwrap_or_default();
+        {
+            let conn = state.conn.lock().map_err(|e| e.to_string())?;
+            ai_repo::create_message(
+                &conn, &conversation_id, "assistant",
+                ai_reply.content.as_deref(),
+                Some(&tc_json), None,
+                ai_reply.reasoning_content.as_deref(),
+            )?;
+        }
+
+        // 把 assistant 消息（含 tool_calls）追加到 chat_messages（必须在 tool 结果之前）
+        chat_messages.push(client::ChatMessage {
+            role: "assistant".to_string(),
+            content: ai_reply.content.clone(),
+            tool_calls: Some(current_tool_calls),
+            tool_call_id: None,
+            name: None,
+            reasoning_content: ai_reply.reasoning_content.clone(),
+        });
+
+        // 执行查询工具 + 保存 tool 结果 + 更新 chat_messages
+        {
+            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+            for tc in &parsed_tc {
+                let result = tool_executor::execute_tool(
+                    &mut *conn, None,
+                    &tc.function.name,
+                    &tc.function.arguments,
+                )
+                .unwrap_or_else(|e| e);
+
+                ai_repo::create_message(
+                    &conn, &conversation_id, "tool",
+                    Some(&result), None, Some(&tc.id), None,
+                )?;
+
+                chat_messages.push(client::ChatMessage {
+                    role: "tool".to_string(),
+                    content: Some(result),
+                    tool_calls: None,
+                    tool_call_id: Some(tc.id.clone()),
+                    name: None,
+                    reasoning_content: None,
+                });
+            }
+        }
+
+        // 重新调用 AI
+        ai_reply = client::chat_completion(&config, chat_messages.clone(), Some(tool_defs.clone())).await?;
+    }
+
+    // 4. 保存最终 AI 回复
     let saved_msg = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         let tool_calls_json = ai_reply
@@ -141,7 +201,7 @@ pub async fn send_message(
         )?
     };
 
-    // 4. 如果对话标题还是默认的"新对话"，自动生成标题
+    // 5. 自动生成标题
     {
         let needs_title = {
             let conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -149,7 +209,6 @@ pub async fn send_message(
             conv.title == "新对话"
         };
         if needs_title {
-            // 取首条用户消息来生成标题
             let first_user_content = {
                 let conn = state.conn.lock().map_err(|e| e.to_string())?;
                 let msgs = ai_repo::list_messages(&conn, &conversation_id)?;
@@ -164,7 +223,7 @@ pub async fn send_message(
                             let _ = ai_repo::rename_conversation(&conn, &conversation_id, &title);
                         }
                     }
-                    Err(_) => { /* 标题生成失败不影响主流程 */ }
+                    Err(_) => {}
                 }
             }
         }
@@ -231,12 +290,13 @@ fn build_chat_context(
 #[tauri::command]
 pub async fn execute_tool_calls(
     state: State<'_, DbState>,
+    app_data: State<'_, AppDataState>,
     conversation_id: String,
     message_id: String,
 ) -> Result<Vec<ai_repo::Message>, String> {
     // 1. 执行工具 + 获取配置
     let config = {
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
 
         let ai_msg = ai_repo::get_message(&conn, &message_id)?;
         let tool_calls_str = ai_msg
@@ -248,11 +308,14 @@ pub async fn execute_tool_calls(
                 .map_err(|e| format!("tool_calls 解析失败: {}", e))?;
 
         for tc in &tool_calls {
+            let app_data_path = app_data.dir.clone();
             let result = tool_executor::execute_tool(
-                &conn,
+                &mut *conn,
+                Some(&app_data_path),
                 &tc.function.name,
                 &tc.function.arguments,
-            )?;
+            )
+            .unwrap_or_else(|e| e);
 
             ai_repo::create_message(
                 &conn,
@@ -271,24 +334,35 @@ pub async fn execute_tool_calls(
         config
     };
 
-    // 2. 构建聊天上下文 + 调 AI 跟进（不带工具）
-    //    分两步以避免 MutexGuard 跨 await
-    let chat_messages = {
+    // 2. 构建聊天上下文 + 调 AI 跟进（带工具，AI 可能继续调下一步）
+    let (chat_messages, tool_defs) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         let (msgs, _) = build_chat_context(&conn, &conversation_id)?;
-        msgs
+        (msgs, tools::get_tools())
     };
 
-    let follow_up_msg = client::chat_completion(&config, chat_messages, None).await?;
+    let follow_up_msg = match client::chat_completion(&config, chat_messages, Some(tool_defs)).await {
+        Ok(msg) => msg,
+        Err(e) => {
+            let conn = state.conn.lock().map_err(|err| err.to_string())?;
+            let fallback = format!("抱歉，AI 服务暂时不可用（{}）。不过你的操作已经完成了。", e);
+            ai_repo::create_message(&conn, &conversation_id, "assistant", Some(&fallback), None, None, None)?;
+            return ai_repo::list_messages(&conn, &conversation_id);
+        }
+    };
 
     // 3. 保存 AI 跟进 + 返回全部消息
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tool_calls_json = follow_up_msg
+        .tool_calls
+        .as_ref()
+        .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     ai_repo::create_message(
         &conn,
         &conversation_id,
         "assistant",
         follow_up_msg.content.as_deref(),
-        None,
+        tool_calls_json.as_deref(),
         None,
         follow_up_msg.reasoning_content.as_deref(),
     )?;
@@ -380,8 +454,94 @@ pub async fn modify_tool_calls(
     )?;
     ai_repo::list_messages(&conn, &conversation_id)
 }
+/// 用户确认执行单个工具调用（不触发 AI 跟进）
+#[tauri::command]
+pub async fn execute_single_tool_call(
+    state: State<'_, DbState>,
+    app_data: State<'_, AppDataState>,
+    conversation_id: String,
+    message_id: String,
+    tool_call_id: String,
+) -> Result<Vec<ai_repo::Message>, String> {
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    let ai_msg = ai_repo::get_message(&conn, &message_id)?;
+    let tool_calls_str = ai_msg
+        .tool_calls
+        .ok_or("该消息不包含 tool_calls".to_string())?;
+
+    let tool_calls: Vec<tools::ToolCall> =
+        serde_json::from_str(&tool_calls_str)
+            .map_err(|e| format!("tool_calls 解析失败: {}", e))?;
+
+    let target = tool_calls
+        .iter()
+        .find(|tc| tc.id == tool_call_id)
+        .ok_or(format!("找不到指定的工具调用: {}", tool_call_id))?;
+
+    let app_data_path = app_data.dir.clone();
+    let result = tool_executor::execute_tool(
+        &mut *conn,
+        Some(&app_data_path),
+        &target.function.name,
+        &target.function.arguments,
+    )
+    .unwrap_or_else(|e| e);
+
+    ai_repo::create_message(
+        &conn,
+        &conversation_id,
+        "tool",
+        Some(&result),
+        None,
+        Some(&target.id),
+        None,
+    )?;
+
+    ai_repo::list_messages(&conn, &conversation_id)
+}
+
+/// 所有工具执行完毕后，触发 AI 跟进回复
+#[tauri::command]
+pub async fn finalize_tool_calls(
+    state: State<'_, DbState>,
+    conversation_id: String,
+) -> Result<Vec<ai_repo::Message>, String> {
+    let (chat_messages, config) = {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        build_chat_context(&conn, &conversation_id)?
+    };
+
+    let tool_defs = tools::get_tools();
+    let follow_up_msg = match client::chat_completion(&config, chat_messages, Some(tool_defs)).await {
+        Ok(msg) => msg,
+        Err(e) => {
+            let conn = state.conn.lock().map_err(|err| err.to_string())?;
+            let fallback = format!("抱歉，AI 服务暂时不可用（{}）。不过你的操作已经完成了。", e);
+            ai_repo::create_message(&conn, &conversation_id, "assistant", Some(&fallback), None, None, None)?;
+            return ai_repo::list_messages(&conn, &conversation_id);
+        }
+    };
+
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tool_calls_json = follow_up_msg
+        .tool_calls
+        .as_ref()
+        .map(|tc| serde_json::to_string(tc).unwrap_or_default());
+    ai_repo::create_message(
+        &conn,
+        &conversation_id,
+        "assistant",
+        follow_up_msg.content.as_deref(),
+        tool_calls_json.as_deref(),
+        None,
+        follow_up_msg.reasoning_content.as_deref(),
+    )?;
+    ai_repo::list_messages(&conn, &conversation_id)
+}
+
 /// 用户取消工具调用
-///
+
 /// 写入取消信息为 tool 消息，让 AI 知道用户拒绝了
 #[tauri::command]
 pub async fn cancel_tool_calls(
@@ -420,23 +580,35 @@ pub async fn cancel_tool_calls(
         config
     };
 
-    // 2. 构建上下文 + 调 AI 跟进
-    let chat_messages = {
+    // 2. 构建上下文 + 调 AI 跟进（带工具）
+    let (chat_messages, tool_defs) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         let (msgs, _) = build_chat_context(&conn, &conversation_id)?;
-        msgs
+        (msgs, tools::get_tools())
     };
 
-    let follow_up_msg = client::chat_completion(&config, chat_messages, None).await?;
+    let follow_up_msg = match client::chat_completion(&config, chat_messages, Some(tool_defs)).await {
+        Ok(msg) => msg,
+        Err(e) => {
+            let conn = state.conn.lock().map_err(|err| err.to_string())?;
+            let fallback = format!("抱歉，AI 服务暂时不可用（{}）。", e);
+            ai_repo::create_message(&conn, &conversation_id, "assistant", Some(&fallback), None, None, None)?;
+            return ai_repo::list_messages(&conn, &conversation_id);
+        }
+    };
 
     // 3. 保存 AI 跟进 + 返回全部消息
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let tool_calls_json = follow_up_msg
+        .tool_calls
+        .as_ref()
+        .map(|tc| serde_json::to_string(tc).unwrap_or_default());
     ai_repo::create_message(
         &conn,
         &conversation_id,
         "assistant",
         follow_up_msg.content.as_deref(),
-        None,
+        tool_calls_json.as_deref(),
         None,
         follow_up_msg.reasoning_content.as_deref(),
     )?;

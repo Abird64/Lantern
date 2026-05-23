@@ -47,7 +47,7 @@ interface JournalState {
   toggleAiPanel: () => void;
   fetchAiDiary: () => Promise<void>;
 
-  // 日省 XP 结算
+  // 日记 XP 结算
   completeDiary: () => Promise<CompleteResult | null>;
 }
 

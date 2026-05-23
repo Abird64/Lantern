@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
-import { Card } from '@/components/ui';
+import { Card, LanternSvg, MascotModal } from '@/components/ui';
 import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
 import { TimelineDropdown } from '@/components/diary/TimelineDropdown';
-import { AiDiaryPanel } from '@/components/diary/AiDiaryPanel';
 import { useJournalStore } from '@/stores/journalStore';
 import { SKILL_COLORS } from '@/styles/theme';
 import type { CompleteResult } from '@/types/task';
@@ -22,6 +21,9 @@ export function DiaryPage() {
     isSaving,
     lastSaved,
     showTimeline,
+    showAiPanel,
+    aiContent,
+    aiExists,
     updateContent,
     loadToday,
     saveNow,
@@ -30,7 +32,7 @@ export function DiaryPage() {
     completeDiary,
   } = useJournalStore();
 
-  // 日省结果浮窗
+  // 日记结算浮窗
   const [xpToast, setXpToast] = useState<CompleteResult | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -166,17 +168,40 @@ export function DiaryPage() {
         </div>
       )}
 
-      {/* 日晷图标 - 点击打开 AI 尘笺 */}
-      <div className="absolute bottom-0 left-0 cursor-pointer" onClick={toggleAiPanel}>
-        <img
-          src="/assets/CodeBuddyAssets/47_57/13.png"
-          alt="AI 尘笺"
-          className="w-[117px] h-[136px] hover:opacity-80 transition-opacity"
-        />
-      </div>
+      {/* 左下角提灯按钮 - 点击打开 AI 日记 */}
+      <button
+        onClick={toggleAiPanel}
+        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
+        title="AI 日记"
+      >
+        <div className="w-11 h-11">
+          <LanternSvg />
+        </div>
+      </button>
 
-      {/* AI 尘笺面板 */}
-      <AiDiaryPanel />
+      {/* AI 日记弹窗 */}
+      <MascotModal
+        show={showAiPanel}
+        onClose={toggleAiPanel}
+        title="提灯的日记"
+      >
+        <div className="mb-2">
+          <span className="font-zhuque text-sm opacity-50">{currentDate}</span>
+        </div>
+        {aiExists ? (
+          <div className="font-zhuque text-lg leading-relaxed whitespace-pre-wrap">
+            {aiContent}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-[#E6D9B8] flex items-center justify-center mb-4">
+              <span className="text-2xl">✨</span>
+            </div>
+            <p className="font-zhuque text-lg opacity-50 mb-2">今日暂无旁白</p>
+            <p className="font-zhuque text-sm opacity-40">点击「日省」，让提灯为你写一段今天的旁白</p>
+          </div>
+        )}
+      </MascotModal>
     </PageContainer>
   );
 }

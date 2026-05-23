@@ -89,6 +89,44 @@ export function parseSearchArgs(tc: ToolCallDef): SearchTasksParams {
   }
 }
 
+/** 通用参数解析：把 arguments JSON 转为 Record */
+export function parseGenericArgs(tc: ToolCallDef): Record<string, unknown> {
+  try {
+    return JSON.parse(tc.function.arguments);
+  } catch {
+    return {};
+  }
+}
+
+/** 工具名 → 人类可读标签 */
+export const TOOL_LABELS: Record<string, { group: string; label: string; color: string }> = {
+  // 任务
+  create_task:       { group: '创建', label: '创建任务', color: '#58A968' },
+  complete_task:     { group: '执行', label: '完成任务', color: '#7CB342' },
+  delete_task:       { group: '删除', label: '删除任务', color: '#E65C5C' },
+  search_tasks:      { group: '查询', label: '查看任务', color: '#6B9BD2' },
+  update_task:       { group: '修改', label: '修改任务', color: '#E8B959' },
+  // 日程
+  create_schedule:   { group: '创建', label: '创建日程', color: '#58A968' },
+  list_schedules_in_range: { group: '查询', label: '查看日程', color: '#6B9BD2' },
+  update_schedule:   { group: '修改', label: '修改日程', color: '#E8B959' },
+  delete_schedule:   { group: '删除', label: '删除日程', color: '#E65C5C' },
+  // 日记
+  get_journal_by_date: { group: '查询', label: '读取日记', color: '#6B9BD2' },
+  save_journal:      { group: '创建', label: '写入日记', color: '#58A968' },
+  get_timeline:      { group: '查询', label: '日记时间线', color: '#6B9BD2' },
+  settle_diary:      { group: '执行', label: '日记结算', color: '#7CB342' },
+  // 人脉
+  create_contact:    { group: '创建', label: '创建联系人', color: '#58A968' },
+  search_contacts:   { group: '查询', label: '搜索联系人', color: '#6B9BD2' },
+  list_contacts:     { group: '查询', label: '列出联系人', color: '#6B9BD2' },
+  update_contact:    { group: '修改', label: '修改联系人', color: '#E8B959' },
+  delete_contact:    { group: '删除', label: '删除联系人', color: '#E65C5C' },
+  // 技能
+  list_skills:       { group: '查询', label: '查看属性', color: '#6B9BD2' },
+  get_task_skills:   { group: '查询', label: '查看任务属性', color: '#6B9BD2' },
+};
+
 /** 状态中文映射 */
 export const STATUS_LABELS: Record<string, string> = {
   pending: '待办',

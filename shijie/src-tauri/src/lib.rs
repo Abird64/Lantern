@@ -54,6 +54,7 @@ pub fn run() {
             commands::schedule_commands::delete_schedule,
             commands::schedule_commands::add_exdate,
             commands::schedule_commands::import_ics_events,
+            commands::schedule_commands::export_ics_events,
             commands::config_commands::get_setting,
             commands::config_commands::set_setting,
             commands::config_commands::list_settings,
@@ -65,6 +66,8 @@ pub fn run() {
             commands::ai_commands::list_messages,
             commands::ai_commands::send_message,
             commands::ai_commands::execute_tool_calls,
+            commands::ai_commands::execute_single_tool_call,
+            commands::ai_commands::finalize_tool_calls,
             commands::ai_commands::cancel_tool_calls,
             commands::ai_commands::modify_tool_calls,
         ])
