@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Check, X, Trash2, Loader2, CircleCheck, Search, Send, Pencil, Zap } from 'lucide-react';
 import type { ToolCallDef } from '@/types/ai';
-import { parseGenericArgs, TOOL_LABELS } from '@/types/ai';
+import { parseGenericArgs } from '@/utils/aiParsers';
+import { TOOL_LABELS } from '@/utils/aiLabels';
 import { SKILL_COLORS } from '@/styles/theme';
 
 /** skill_id → 中文名 */
@@ -368,6 +369,17 @@ function buildDetailLines(toolName: string, params: Record<string, unknown>): st
       continue;
     }
 
+    // 联系方式特殊处理
+    if (key === 'contact_methods' && Array.isArray(value)) {
+      const methodLabels: Record<string, string> = {
+        phone: '电话', wechat: '微信', qq: 'QQ', email: '邮箱', other: '其他',
+      };
+      const parts = (value as Array<{ method_type: string; value: string }>)
+        .map((m) => `${methodLabels[m.method_type] || m.method_type}:${m.value}`);
+      if (parts.length) lines.push(`${FIELD_LABELS[key] || key}：${parts.join('、')}`);
+      continue;
+    }
+
     const label = FIELD_LABELS[key] || key;
     const formatted = formatValue(key, value);
     if (formatted) {
@@ -412,8 +424,11 @@ const FIELD_LABELS: Record<string, string> = {
   end_date: '结束日期',
   nickname: '昵称',
   group_name: '分组',
-  birthday: '生日',
-  contact_info: '联系方式',
+  birthday_calendar: '日历类型',
+  birthday_year: '出生年份',
+  birthday_month: '出生月份',
+  birthday_day: '出生日期',
+  contact_methods: '联系方式',
   year: '年',
   month: '月',
 };

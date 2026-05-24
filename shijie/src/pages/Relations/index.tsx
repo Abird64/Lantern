@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2 } from 'lucide-react';
-import { NavBar, CapsuleTabs, LanternSvg, themes, MascotModal } from '@/components/ui';
+import { Plus, X, Trash2, Phone, MessageCircle, AtSign, Globe } from 'lucide-react';
+import { NavBar, CapsuleTabs } from '@/components/ui';
+import { GridBackground, PageContainer } from '@/components/layout';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import { useContactStore } from '@/stores/contactStore';
-import type { Contact } from '@/types/contact';
+import type { Contact, ContactMethodInput } from '@/types/contact';
 
 const categories = [
   { id: 'all', label: '全部' },
@@ -31,7 +33,22 @@ const groupColors: Record<string, string> = {
   teacher: '#2A8CB7',
 };
 
-const theme = themes.relations;
+
+const METHOD_TYPES: { id: string; label: string; icon: typeof Phone }[] = [
+  { id: 'phone', label: '电话', icon: Phone },
+  { id: 'wechat', label: '微信', icon: MessageCircle },
+  { id: 'qq', label: 'QQ', icon: MessageCircle },
+  { id: 'email', label: '邮箱', icon: AtSign },
+  { id: 'other', label: '其他', icon: Globe },
+];
+
+function getMethodIcon(type: string) {
+  return METHOD_TYPES.find((m) => m.id === type)?.icon ?? Globe;
+}
+
+function getMethodLabel(type: string): string {
+  return METHOD_TYPES.find((m) => m.id === type)?.label ?? type;
+}
 
 /** 逗号分隔字符串 ↔ 数组 */
 function splitTags(s: string): string[] {
@@ -96,7 +113,54 @@ function TagInput({
   );
 }
 
+/** 联系方式行组件 */
+function MethodRow({
+  method, onChange, onRemove, accentColor, textColor, bgColor,
+}: {
+  method: ContactMethodInput;
+  onChange: (m: ContactMethodInput) => void;
+  onRemove: () => void;
+  accentColor: string;
+  textColor: string;
+  bgColor: string;
+}) {
+  const Icon = getMethodIcon(method.method_type);
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={method.method_type}
+        onChange={(e) => onChange({ ...method, method_type: e.target.value })}
+        className="custom-select text-sm rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer flex-shrink-0"
+        style={{ color: textColor, backgroundColor: bgColor }}
+      >
+        {METHOD_TYPES.map((mt) => (
+          <option key={mt.id} value={mt.id}>{mt.label}</option>
+        ))}
+      </select>
+      <div className="flex-1 relative">
+        <Icon size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: `${textColor}60` }} />
+        <input
+          type="text"
+          value={method.value}
+          onChange={(e) => onChange({ ...method, value: e.target.value })}
+          placeholder="输入联系方式..."
+          className="w-full text-base rounded-xl pl-8 pr-3 py-2.5 focus:outline-none"
+          style={{ color: textColor, backgroundColor: bgColor }}
+        />
+      </div>
+      <button
+        onClick={onRemove}
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity"
+        title="移除"
+      >
+        <X size={14} style={{ color: `${textColor}60` }} />
+      </button>
+    </div>
+  );
+}
+
 export function RelationsPage() {
+  const theme = usePageTheme('relations');
   const { contacts, isLoading, fetchContacts, createContact, updateContact, deleteContact } = useContactStore();
   const [activeCategory, setActiveCategory] = useState('all');
 
@@ -106,9 +170,11 @@ export function RelationsPage() {
   const [newNicknames, setNewNicknames] = useState<string[]>([]);
   const [newNicknameInput, setNewNicknameInput] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
-  const [newBirthday, setNewBirthday] = useState('');
-  const [newContactInfos, setNewContactInfos] = useState<string[]>([]);
-  const [newContactInfoInput, setNewContactInfoInput] = useState('');
+  const [newBirthdayCalendar, setNewBirthdayCalendar] = useState<'solar' | 'lunar'>('solar');
+  const [newBirthdayYear, setNewBirthdayYear] = useState('');
+  const [newBirthdayMonth, setNewBirthdayMonth] = useState('');
+  const [newBirthdayDay, setNewBirthdayDay] = useState('');
+  const [newContactMethods, setNewContactMethods] = useState<ContactMethodInput[]>([]);
   const [newNotes, setNewNotes] = useState('');
   const createInputRef = useRef<HTMLInputElement>(null);
 
@@ -118,13 +184,12 @@ export function RelationsPage() {
   const [editNicknames, setEditNicknames] = useState<string[]>([]);
   const [editNicknameInput, setEditNicknameInput] = useState('');
   const [editGroupName, setEditGroupName] = useState('');
-  const [editBirthday, setEditBirthday] = useState('');
-  const [editContactInfos, setEditContactInfos] = useState<string[]>([]);
-  const [editContactInfoInput, setEditContactInfoInput] = useState('');
+  const [editBirthdayCalendar, setEditBirthdayCalendar] = useState<'solar' | 'lunar'>('solar');
+  const [editBirthdayYear, setEditBirthdayYear] = useState('');
+  const [editBirthdayMonth, setEditBirthdayMonth] = useState('');
+  const [editBirthdayDay, setEditBirthdayDay] = useState('');
+  const [editContactMethods, setEditContactMethods] = useState<ContactMethodInput[]>([]);
   const [editNotes, setEditNotes] = useState('');
-
-  // AI 建议面板（占位）
-  const [showAiPanel, setShowAiPanel] = useState(false);
 
   // Toast
   const [toast, setToast] = useState('');
@@ -153,9 +218,11 @@ export function RelationsPage() {
     setNewNicknames([]);
     setNewNicknameInput('');
     setNewGroupName('');
-    setNewBirthday('');
-    setNewContactInfos([]);
-    setNewContactInfoInput('');
+    setNewBirthdayCalendar('solar');
+    setNewBirthdayYear('');
+    setNewBirthdayMonth('');
+    setNewBirthdayDay('');
+    setNewContactMethods([]);
     setNewNotes('');
   }
 
@@ -166,8 +233,11 @@ export function RelationsPage() {
         name: newName.trim(),
         nickname: newNicknames.length > 0 ? joinTags(newNicknames) : undefined,
         group_name: newGroupName || undefined,
-        birthday: newBirthday || undefined,
-        contact_info: newContactInfos.length > 0 ? joinTags(newContactInfos) : undefined,
+        birthday_calendar: newBirthdayCalendar || undefined,
+        birthday_year: newBirthdayYear ? parseInt(newBirthdayYear) : undefined,
+        birthday_month: newBirthdayMonth ? parseInt(newBirthdayMonth) : undefined,
+        birthday_day: newBirthdayDay ? parseInt(newBirthdayDay) : undefined,
+        contact_methods: newContactMethods.length > 0 ? newContactMethods : undefined,
         notes: newNotes.trim() || undefined,
       });
       setShowCreate(false);
@@ -184,9 +254,13 @@ export function RelationsPage() {
     setEditNicknames(contact.nickname ? splitTags(contact.nickname) : []);
     setEditNicknameInput('');
     setEditGroupName(contact.group_name || '');
-    setEditBirthday(contact.birthday || '');
-    setEditContactInfos(contact.contact_info ? splitTags(contact.contact_info) : []);
-    setEditContactInfoInput('');
+    setEditBirthdayCalendar((contact.birthday_calendar as 'solar' | 'lunar') || 'solar');
+    setEditBirthdayYear(contact.birthday_year ? String(contact.birthday_year) : '');
+    setEditBirthdayMonth(contact.birthday_month ? String(contact.birthday_month) : '');
+    setEditBirthdayDay(contact.birthday_day ? String(contact.birthday_day) : '');
+    setEditContactMethods(
+      contact.contact_methods?.map((m) => ({ method_type: m.method_type, value: m.value })) ?? []
+    );
     setEditNotes(contact.notes || '');
   }
 
@@ -201,8 +275,11 @@ export function RelationsPage() {
         name: editName.trim(),
         nickname: editNicknames.length > 0 ? joinTags(editNicknames) : undefined,
         group_name: editGroupName || undefined,
-        birthday: editBirthday || undefined,
-        contact_info: editContactInfos.length > 0 ? joinTags(editContactInfos) : undefined,
+        birthday_calendar: editBirthdayCalendar || undefined,
+        birthday_year: editBirthdayYear ? parseInt(editBirthdayYear) : undefined,
+        birthday_month: editBirthdayMonth ? parseInt(editBirthdayMonth) : undefined,
+        birthday_day: editBirthdayDay ? parseInt(editBirthdayDay) : undefined,
+        contact_methods: editContactMethods.length > 0 ? editContactMethods : undefined,
         notes: editNotes.trim() || undefined,
       });
       showToast('已保存');
@@ -230,18 +307,9 @@ export function RelationsPage() {
   }
 
   return (
-    <div className="h-screen px-4 md:px-6 lg:px-8 relative flex flex-col overflow-hidden" style={{ backgroundColor: theme.bg }}>
+    <PageContainer className="relative" bgColor={theme.bg}>
       {/* 网格背景 */}
-      <div
-        className="absolute inset-0 opacity-10 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
+      <GridBackground isDark={theme.isDark} />
 
       {/* 顶部导航栏 */}
       <NavBar
@@ -258,6 +326,7 @@ export function RelationsPage() {
             activeId={activeCategory}
             onChange={setActiveCategory}
             accentColor={theme.accent}
+            isDark={theme.isDark}
           />
         </div>
       </div>
@@ -290,11 +359,11 @@ export function RelationsPage() {
 
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-zhuque text-2xl truncate" style={{ color: theme.text }}>
+                      <span className="font-zhuque text-2xl truncate" style={{ color: theme.cardText }}>
                         {contact.name}
                       </span>
                       {contact.nickname && (
-                        <span className="font-zhuque text-base truncate" style={{ color: `${theme.text}55` }}>
+                        <span className="font-zhuque text-base truncate" style={{ color: `${theme.cardText}55` }}>
                           ({splitTags(contact.nickname)[0]}{splitTags(contact.nickname).length > 1 ? '...' : ''})
                         </span>
                       )}
@@ -310,8 +379,25 @@ export function RelationsPage() {
                         {contact.group_name}
                       </span>
                     )}
+                    {contact.contact_methods && contact.contact_methods.length > 0 && (
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        {contact.contact_methods.map((m) => {
+                          const Icon = getMethodIcon(m.method_type);
+                          return (
+                            <span
+                              key={m.id}
+                              className="inline-flex items-center gap-1 text-xs"
+                              style={{ color: `${theme.cardText}80` }}
+                            >
+                              <Icon size={11} />
+                              <span className="font-zhuque">{getMethodLabel(m.method_type)}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     {contact.notes && (
-                      <span className="font-zhuque text-lg mt-1 truncate" style={{ color: `${theme.text}99` }}>
+                      <span className="font-zhuque text-lg mt-1 truncate" style={{ color: `${theme.cardText}99` }}>
                         {contact.notes}
                       </span>
                     )}
@@ -323,17 +409,6 @@ export function RelationsPage() {
         </div>
       </div>
 
-      {/* 左下角提灯按钮（AI 建议） */}
-      <button
-        onClick={() => setShowAiPanel(true)}
-        className="fixed bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
-        title="AI 建议"
-      >
-        <div className="w-11 h-11">
-          <LanternSvg />
-        </div>
-      </button>
-
       {/* 右下角加号按钮 */}
       <button
         onClick={() => setShowCreate(true)}
@@ -342,18 +417,6 @@ export function RelationsPage() {
       >
         <Plus size={28} strokeWidth={2.5} />
       </button>
-
-      {/* ========== AI 建议面板 ========== */}
-      <MascotModal
-        show={showAiPanel}
-        onClose={() => setShowAiPanel(false)}
-        title="人脉洞察"
-      >
-        <div className="text-center py-8">
-          <p className="font-zhuque text-lg">AI 建议功能即将上线</p>
-          <p className="font-zhuque text-sm mt-2 opacity-60">谁快过生日了？该联系谁了？</p>
-        </div>
-      </MascotModal>
 
       {/* ========== 创建联系人弹窗 ========== */}
       {showCreate && (
@@ -375,14 +438,14 @@ export function RelationsPage() {
               placeholder="姓名（必填）"
               className="w-full text-xl bg-transparent border-b pb-3 mb-5 focus:outline-none"
               style={{
-                color: theme.text,
-                borderColor: newName ? theme.accent : `${theme.text}20`,
+                color: theme.cardText,
+                borderColor: newName ? theme.accent : `${theme.cardText}20`,
               }}
             />
 
             {/* 别称/昵称（多值） */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${theme.text}80` }}>别称 / 昵称</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${theme.cardText}80` }}>别称 / 昵称</label>
               <TagInput
                 tags={newNicknames}
                 onTagsChange={setNewNicknames}
@@ -395,7 +458,7 @@ export function RelationsPage() {
 
             {/* 分组 */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${theme.text}80` }}>分组</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${theme.cardText}80` }}>分组</label>
               <div className="flex gap-2 flex-wrap">
                 {Object.entries(groupIdToLabel).map(([id, label]) => (
                   <button
@@ -403,8 +466,8 @@ export function RelationsPage() {
                     onClick={() => setNewGroupName(newGroupName === label ? '' : label)}
                     className="px-3 py-1.5 rounded-full text-sm transition-all"
                     style={{
-                      backgroundColor: newGroupName === label ? groupColors[id] : `${theme.text}10`,
-                      color: newGroupName === label ? '#fff' : `${theme.text}99`,
+                      backgroundColor: newGroupName === label ? groupColors[id] : `${theme.cardText}10`,
+                      color: newGroupName === label ? '#fff' : `${theme.cardText}99`,
                     }}
                   >
                     {label}
@@ -415,32 +478,94 @@ export function RelationsPage() {
 
             {/* 生日 */}
             <div className="mb-4">
-              <div
-                className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                style={{ backgroundColor: `${theme.text}08` }}
-              >
-                <span className="text-sm shrink-0" style={{ color: `${theme.text}50` }}>生日</span>
+              <label className="block text-sm mb-1.5" style={{ color: `${theme.cardText}80` }}>生日</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* 日历类型切换 */}
+                <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${theme.cardText}08` }}>
+                  <button
+                    onClick={() => setNewBirthdayCalendar('solar')}
+                    className="px-3 py-1.5 text-xs transition-colors"
+                    style={{
+                      backgroundColor: newBirthdayCalendar === 'solar' ? theme.accent : 'transparent',
+                      color: newBirthdayCalendar === 'solar' ? '#fff' : `${theme.cardText}60`,
+                    }}
+                  >阳历</button>
+                  <button
+                    onClick={() => setNewBirthdayCalendar('lunar')}
+                    className="px-3 py-1.5 text-xs transition-colors"
+                    style={{
+                      backgroundColor: newBirthdayCalendar === 'lunar' ? theme.accent : 'transparent',
+                      color: newBirthdayCalendar === 'lunar' ? '#fff' : `${theme.cardText}60`,
+                    }}
+                  >农历</button>
+                </div>
+                {/* 年份（选填） */}
                 <input
-                  type="date"
-                  value={newBirthday}
-                  onChange={(e) => setNewBirthday(e.target.value)}
-                  className="date-input text-sm flex-1"
-                  style={{ color: theme.text }}
+                  type="number"
+                  value={newBirthdayYear}
+                  onChange={(e) => setNewBirthdayYear(e.target.value)}
+                  placeholder="年份"
+                  min="1900" max="2100"
+                  className="w-20 text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                  style={{ color: theme.cardText, backgroundColor: `${theme.cardText}08` }}
                 />
+                <span className="text-sm" style={{ color: `${theme.cardText}40` }}>年</span>
+                {/* 月份 */}
+                <select
+                  value={newBirthdayMonth}
+                  onChange={(e) => setNewBirthdayMonth(e.target.value)}
+                  className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                  style={{ color: theme.cardText, backgroundColor: `${theme.cardText}0D` }}
+                >
+                  <option value="">月</option>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                  ))}
+                </select>
+                <span className="text-sm" style={{ color: `${theme.cardText}40` }}>月</span>
+                {/* 日期 */}
+                <select
+                  value={newBirthdayDay}
+                  onChange={(e) => setNewBirthdayDay(e.target.value)}
+                  className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                  style={{ color: theme.cardText, backgroundColor: `${theme.cardText}0D` }}
+                >
+                  <option value="">日</option>
+                  {Array.from({ length: 31 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1}</option>
+                  ))}
+                </select>
+                <span className="text-sm" style={{ color: `${theme.cardText}40` }}>日</span>
               </div>
             </div>
 
-            {/* 联系方式（多值） */}
+            {/* 联系方式 */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${theme.text}80` }}>联系方式</label>
-              <TagInput
-                tags={newContactInfos}
-                onTagsChange={setNewContactInfos}
-                inputVal={newContactInfoInput}
-                onInputChange={setNewContactInfoInput}
-                placeholder="电话/微信/QQ 等，回车添加"
-                accentColor={theme.accent}
-              />
+              <label className="block text-sm mb-1.5" style={{ color: `${theme.cardText}80` }}>联系方式</label>
+              <div className="space-y-2">
+                {newContactMethods.map((m, i) => (
+                  <MethodRow
+                    key={i}
+                    method={m}
+                    onChange={(v) => {
+                      const next = [...newContactMethods];
+                      next[i] = v;
+                      setNewContactMethods(next);
+                    }}
+                    onRemove={() => setNewContactMethods(newContactMethods.filter((_, j) => j !== i))}
+                    accentColor={theme.accent}
+                    textColor={theme.cardText}
+                    bgColor={`${theme.cardText}08`}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={() => setNewContactMethods([...newContactMethods, { method_type: 'phone', value: '' }])}
+                className="mt-2 text-sm flex items-center gap-1 transition-colors hover:opacity-80"
+                style={{ color: theme.accent }}
+              >
+                <Plus size={14} /> 添加联系方式
+              </button>
             </div>
 
             {/* 备注 */}
@@ -452,8 +577,8 @@ export function RelationsPage() {
                 rows={2}
                 className="w-full text-base rounded-2xl px-4 py-3 focus:outline-none resize-none"
                 style={{
-                  backgroundColor: `${theme.text}08`,
-                  color: theme.text,
+                  backgroundColor: `${theme.cardText}08`,
+                  color: theme.cardText,
                 }}
               />
             </div>
@@ -463,7 +588,7 @@ export function RelationsPage() {
               <button
                 onClick={() => { setShowCreate(false); resetCreateForm(); }}
                 className="flex-1 py-3 rounded-full transition-colors"
-                style={{ color: `${theme.text}80`, backgroundColor: `${theme.text}10` }}
+                style={{ color: `${theme.cardText}80`, backgroundColor: `${theme.cardText}10` }}
               >
                 取消
               </button>
@@ -562,26 +687,93 @@ export function RelationsPage() {
               {/* 生日 */}
               <div>
                 <label className="block text-sm mb-1.5" style={{ color: `${theme.text}60` }}>生日</label>
-                <input
-                  type="date"
-                  value={editBirthday}
-                  onChange={(e) => setEditBirthday(e.target.value)}
-                  className="date-input w-full text-base rounded-2xl px-4 py-3 focus:outline-none"
-                  style={{ color: theme.text, backgroundColor: `${theme.text}08` }}
-                />
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* 日历类型切换 */}
+                  <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${theme.text}08` }}>
+                    <button
+                      onClick={() => setEditBirthdayCalendar('solar')}
+                      className="px-3 py-1.5 text-xs transition-colors"
+                      style={{
+                        backgroundColor: editBirthdayCalendar === 'solar' ? theme.accent : 'transparent',
+                        color: editBirthdayCalendar === 'solar' ? '#fff' : `${theme.text}60`,
+                      }}
+                    >阳历</button>
+                    <button
+                      onClick={() => setEditBirthdayCalendar('lunar')}
+                      className="px-3 py-1.5 text-xs transition-colors"
+                      style={{
+                        backgroundColor: editBirthdayCalendar === 'lunar' ? theme.accent : 'transparent',
+                        color: editBirthdayCalendar === 'lunar' ? '#fff' : `${theme.text}60`,
+                      }}
+                    >农历</button>
+                  </div>
+                  {/* 年份（选填） */}
+                  <input
+                    type="number"
+                    value={editBirthdayYear}
+                    onChange={(e) => setEditBirthdayYear(e.target.value)}
+                    placeholder="年份"
+                    min="1900" max="2100"
+                    className="w-20 text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                    style={{ color: theme.text, backgroundColor: `${theme.text}08` }}
+                  />
+                  <span className="text-sm" style={{ color: `${theme.text}40` }}>年</span>
+                  {/* 月份 */}
+                  <select
+                    value={editBirthdayMonth}
+                    onChange={(e) => setEditBirthdayMonth(e.target.value)}
+                    className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                    style={{ color: theme.text, backgroundColor: `${theme.text}0D` }}
+                  >
+                    <option value="">月</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <span className="text-sm" style={{ color: `${theme.text}40` }}>月</span>
+                  {/* 日期 */}
+                  <select
+                    value={editBirthdayDay}
+                    onChange={(e) => setEditBirthdayDay(e.target.value)}
+                    className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
+                    style={{ color: theme.text, backgroundColor: `${theme.text}0D` }}
+                  >
+                    <option value="">日</option>
+                    {Array.from({ length: 31 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <span className="text-sm" style={{ color: `${theme.text}40` }}>日</span>
+                </div>
               </div>
 
-              {/* 联系方式（多值） */}
+              {/* 联系方式 */}
               <div>
                 <label className="block text-sm mb-1.5" style={{ color: `${theme.text}60` }}>联系方式</label>
-                <TagInput
-                  tags={editContactInfos}
-                  onTagsChange={setEditContactInfos}
-                  inputVal={editContactInfoInput}
-                  onInputChange={setEditContactInfoInput}
-                  placeholder="电话/微信/QQ 等，回车添加"
-                  accentColor={theme.accent}
-                />
+                <div className="space-y-2">
+                  {editContactMethods.map((m, i) => (
+                    <MethodRow
+                      key={i}
+                      method={m}
+                      onChange={(v) => {
+                        const next = [...editContactMethods];
+                        next[i] = v;
+                        setEditContactMethods(next);
+                      }}
+                      onRemove={() => setEditContactMethods(editContactMethods.filter((_, j) => j !== i))}
+                      accentColor={theme.accent}
+                      textColor={theme.text}
+                      bgColor={`${theme.text}08`}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => setEditContactMethods([...editContactMethods, { method_type: 'phone', value: '' }])}
+                  className="mt-2 text-sm flex items-center gap-1 transition-colors hover:opacity-80"
+                  style={{ color: theme.accent }}
+                >
+                  <Plus size={14} /> 添加联系方式
+                </button>
               </div>
 
               {/* 备注 */}
@@ -603,7 +795,7 @@ export function RelationsPage() {
               <button
                 onClick={handleDelete}
                 className="px-5 py-3 rounded-full flex items-center gap-2 transition-colors"
-                style={{ color: '#ef4444', backgroundColor: '#ef444420' }}
+                style={{ color: theme.danger, backgroundColor: `${theme.danger}20` }}
               >
                 <Trash2 size={16} />
                 删除
@@ -656,7 +848,20 @@ export function RelationsPage() {
         .date-input::-webkit-calendar-picker-indicator:hover {
           opacity: 0.7;
         }
+        select.custom-select {
+          -webkit-appearance: none;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 8px center;
+          padding-right: 28px;
+          cursor: pointer;
+        }
+        select.custom-select option {
+          color: #1A1A1A;
+          background: #F5F1EB;
+        }
       `}</style>
-    </div>
+    </PageContainer>
   );
 }

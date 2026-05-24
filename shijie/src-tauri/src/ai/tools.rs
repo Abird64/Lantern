@@ -545,7 +545,7 @@ fn save_journal_definition() -> ToolDefinition {
     }
 }
 
-fn settle_diary_definition() -> ToolDefinition {
+pub fn settle_diary_definition() -> ToolDefinition {
     ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDef {
@@ -632,13 +632,33 @@ fn create_contact_definition() -> ToolDefinition {
                         "enum": ["家人", "朋友", "同学", "同事", "老师"],
                         "description": "分组。根据语境推断，不确定就不填"
                     },
-                    "birthday": {
+                    "birthday_calendar": {
                         "type": "string",
-                        "description": "生日，MM-DD格式如 03-15"
+                        "enum": ["solar", "lunar"],
+                        "description": "日历类型：solar=阳历(公历)，lunar=农历(阴历)。用户没说则默认solar"
                     },
-                    "contact_info": {
-                        "type": "string",
-                        "description": "联系方式，JSON数组字符串，如'[{\"type\":\"手机\",\"value\":\"13800138000\"},{\"type\":\"微信\",\"value\":\"zhangsan\"}]'"
+                    "birthday_year": {
+                        "type": "integer",
+                        "description": "出生年份，如 1998。如果用户没提供年份则不填"
+                    },
+                    "birthday_month": {
+                        "type": "integer",
+                        "description": "出生月份，1-12"
+                    },
+                    "birthday_day": {
+                        "type": "integer",
+                        "description": "出生日期，1-31"
+                    },
+                    "contact_methods": {
+                        "type": "array",
+                        "description": "联系方式列表，每项包含 method_type（phone/wechat/qq/email/other）和 value",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "method_type": { "type": "string", "description": "联系方式类型：phone, wechat, qq, email, other" },
+                                "value": { "type": "string", "description": "联系方式的值" }
+                            }
+                        }
                     },
                     "notes": {
                         "type": "string",
@@ -722,13 +742,33 @@ fn update_contact_definition() -> ToolDefinition {
                         "enum": ["家人", "朋友", "同学", "同事", "老师"],
                         "description": "新分组"
                     },
-                    "birthday": {
+                    "birthday_calendar": {
                         "type": "string",
-                        "description": "新生日，MM-DD格式"
+                        "enum": ["solar", "lunar"],
+                        "description": "新日历类型：solar=阳历，lunar=农历"
                     },
-                    "contact_info": {
-                        "type": "string",
-                        "description": "新联系方式，JSON数组字符串"
+                    "birthday_year": {
+                        "type": "integer",
+                        "description": "新出生年份，如 1998。不填表示不修改"
+                    },
+                    "birthday_month": {
+                        "type": "integer",
+                        "description": "新出生月份，1-12"
+                    },
+                    "birthday_day": {
+                        "type": "integer",
+                        "description": "新出生日期，1-31"
+                    },
+                    "contact_methods": {
+                        "type": "array",
+                        "description": "新联系方式列表，每项包含 method_type（phone/wechat/qq/email/other）和 value",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "method_type": { "type": "string", "description": "联系方式类型" },
+                                "value": { "type": "string", "description": "联系方式的值" }
+                            }
+                        }
                     },
                     "notes": {
                         "type": "string",

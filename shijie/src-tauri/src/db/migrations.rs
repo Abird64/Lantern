@@ -211,12 +211,89 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         [],
     );
 
+    // 增量迁移：birthday 从单个 TEXT 拆分为 4 个结构化字段
+    let _ = conn.execute(
+        "ALTER TABLE contacts ADD COLUMN birthday_calendar TEXT DEFAULT 'solar'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE contacts ADD COLUMN birthday_year INTEGER",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE contacts ADD COLUMN birthday_month INTEGER",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE contacts ADD COLUMN birthday_day INTEGER",
+        [],
+    );
+    // 从旧 birthday TEXT 列迁移数据到新字段（2000 是占位年份 → NULL）
+    let _ = conn.execute(
+        "UPDATE contacts SET \
+         birthday_year = CASE WHEN CAST(substr(birthday,1,4) AS INTEGER) = 2000 \
+                              THEN NULL ELSE CAST(substr(birthday,1,4) AS INTEGER) END, \
+         birthday_month = CAST(substr(birthday,6,2) AS INTEGER), \
+         birthday_day = CAST(substr(birthday,9,2) AS INTEGER) \
+         WHERE birthday IS NOT NULL AND birthday != '' AND length(birthday) >= 10",
+        [],
+    );
+
     // 增量迁移：人脉分组名从古风改为直白
     let _ = conn.execute("UPDATE contacts SET group_name = '家人' WHERE group_name = '至亲'", []);
     let _ = conn.execute("UPDATE contacts SET group_name = '朋友' WHERE group_name = '知己'", []);
     let _ = conn.execute("UPDATE contacts SET group_name = '同学' WHERE group_name = '同窗'", []);
     let _ = conn.execute("UPDATE contacts SET group_name = '同事' WHERE group_name = '共事'", []);
     let _ = conn.execute("UPDATE contacts SET group_name = '老师' WHERE group_name = '恩师'", []);
+
+    // 增量迁移：联系方式从 contacts.contact_info TEXT 拆分为 contact_methods 独立表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS contact_methods (
+            id          TEXT PRIMARY KEY,
+            contact_id  TEXT NOT NULL,
+            method_type TEXT NOT NULL DEFAULT 'other',
+            value       TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contact_methods_contact ON contact_methods(contact_id)",
+        [],
+    );
+
+    // 迁移旧 contact_info 数据（仅在表刚创建且为空时执行一次）
+    let count: i32 = conn
+        .query_row("SELECT COUNT(*) FROM contact_methods", [], |row| row.get(0))
+        .unwrap_or(0);
+    if count == 0 {
+        let mut stmt = conn
+            .prepare("SELECT id, contact_info, created_at FROM contacts WHERE contact_info IS NOT NULL AND contact_info != ''")
+            .unwrap();
+        let rows: Vec<(String, String, String)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (contact_id, info, created_at) in &rows {
+            for val in info.split([',', '，']).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let method_id: String = nanoid::nanoid!();
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO contact_methods (id, contact_id, method_type, value, created_at)
+                     VALUES (?1, ?2, 'other', ?3, ?4)",
+                    rusqlite::params![method_id, contact_id, val, created_at],
+                );
+            }
+        }
+    }
 
     log::info!("Database migrations completed");
     Ok(())

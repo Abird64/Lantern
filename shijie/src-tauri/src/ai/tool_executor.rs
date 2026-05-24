@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use crate::db::repositories::{contact_repo, journal_repo, schedule_repo, skill_repo, task_repo};
+use crate::db::repositories::contact_repo::ContactMethodInput;
 use crate::db::repositories::task_repo::Task;
 
 // ========== 工具参数解析 ==========
@@ -154,6 +155,12 @@ struct ToolTimelineArgs {
 // ── 人脉参数 ──
 
 #[derive(Debug, Deserialize)]
+struct ToolContactMethod {
+    method_type: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ToolCreateContactArgs {
     name: String,
     #[serde(default)]
@@ -161,9 +168,15 @@ struct ToolCreateContactArgs {
     #[serde(default)]
     group_name: Option<String>,
     #[serde(default)]
-    birthday: Option<String>,
+    birthday_calendar: Option<String>,
     #[serde(default)]
-    contact_info: Option<String>,
+    birthday_year: Option<i32>,
+    #[serde(default)]
+    birthday_month: Option<i32>,
+    #[serde(default)]
+    birthday_day: Option<i32>,
+    #[serde(default)]
+    contact_methods: Option<Vec<ToolContactMethod>>,
     #[serde(default)]
     notes: Option<String>,
 }
@@ -181,9 +194,15 @@ struct ToolUpdateContactArgs {
     #[serde(default)]
     group_name: Option<String>,
     #[serde(default)]
-    birthday: Option<String>,
+    birthday_calendar: Option<String>,
     #[serde(default)]
-    contact_info: Option<String>,
+    birthday_year: Option<i32>,
+    #[serde(default)]
+    birthday_month: Option<i32>,
+    #[serde(default)]
+    birthday_day: Option<i32>,
+    #[serde(default)]
+    contact_methods: Option<Vec<ToolContactMethod>>,
     #[serde(default)]
     notes: Option<String>,
 }
@@ -1017,19 +1036,37 @@ fn execute_create_contact(conn: &Connection, arguments: &str) -> Result<String, 
     let args: ToolCreateContactArgs = serde_json::from_str(arguments)
         .map_err(|e| format!("create_contact 参数解析失败: {}", e))?;
 
+    let methods: Vec<ContactMethodInput> = args.contact_methods
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| ContactMethodInput { method_type: m.method_type, value: m.value })
+        .collect();
+
     let contact = contact_repo::create_contact(
         conn, &args.name,
         args.nickname.as_deref(),
         args.group_name.as_deref(),
         None,
-        args.birthday.as_deref(),
-        args.contact_info.as_deref(),
+        args.birthday_calendar.as_deref(),
+        args.birthday_year,
+        args.birthday_month,
+        args.birthday_day,
+        &methods,
         args.notes.as_deref(),
     )?;
 
     let mut result = format!("联系人已创建：{}", contact.name);
     if let Some(ref g) = contact.group_name {
         result.push_str(&format!("，分组：{}", g));
+    }
+    if let (Some(m), Some(d)) = (contact.birthday_month, contact.birthday_day) {
+        let cal = contact.birthday_calendar.as_deref().unwrap_or("solar");
+        let cal_label = if cal == "lunar" { "农历" } else { "阳历" };
+        if let Some(y) = contact.birthday_year {
+            result.push_str(&format!("，生日：{}{}年{}月{}日", cal_label, y, m, d));
+        } else {
+            result.push_str(&format!("，生日：{}{}月{}日", cal_label, m, d));
+        }
     }
     Ok(result)
 }
@@ -1050,8 +1087,11 @@ fn execute_search_contacts(conn: &Connection, arguments: &str) -> Result<String,
     for c in &contacts {
         let group = c.group_name.as_deref().unwrap_or("未分组");
         let mut line = format!("- **{}** ({})", c.name, group);
-        if let Some(ref info) = c.contact_info {
-            line.push_str(&format!("，联系方式：{}", info));
+        if !c.contact_methods.is_empty() {
+            let methods: Vec<String> = c.contact_methods.iter()
+                .map(|m| format!("[{}]{}", m.method_type, m.value))
+                .collect();
+            line.push_str(&format!("，联系方式：{}", methods.join(", ")));
         }
         if let Some(ref notes) = c.notes {
             line.push_str(&format!("，备注：{}", notes));
@@ -1135,14 +1175,21 @@ fn execute_update_contact(conn: &Connection, arguments: &str) -> Result<String, 
         return Err("请提供 query 或 id 来指定要修改的联系人".to_string());
     }
 
+    let methods: Option<Vec<ContactMethodInput>> = args.contact_methods.map(|ms|
+        ms.into_iter().map(|m| ContactMethodInput { method_type: m.method_type, value: m.value }).collect()
+    );
+
     let updated = contact_repo::update_contact(
         conn, &contact_id,
         args.name.as_deref(),
         args.nickname.as_deref(),
         args.group_name.as_deref(),
         None,
-        args.birthday.as_deref(),
-        args.contact_info.as_deref(),
+        args.birthday_calendar.as_deref(),
+        args.birthday_year,
+        args.birthday_month,
+        args.birthday_day,
+        methods.as_deref(),
         args.notes.as_deref(),
     )?;
 
