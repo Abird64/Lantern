@@ -343,27 +343,27 @@ export function RelationsPage() {
               暂无联系人
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-4">
               {filteredContacts.map((contact) => (
                 <div
                   key={contact.id}
                   onClick={() => openDetail(contact)}
-                  className="h-[140px] rounded-[40px] p-6 pl-8 flex items-center gap-5 hover:opacity-90 transition-colors cursor-pointer"
+                  className="rounded-[24px] p-4 flex items-center gap-4 hover:opacity-90 transition-colors cursor-pointer"
                   style={{ backgroundColor: theme.card }}
                 >
                   {/* 头像 */}
                   <div
-                    className="w-[60px] h-[60px] rounded-full flex-shrink-0"
+                    className="w-[48px] h-[48px] rounded-full flex-shrink-0"
                     style={{ backgroundColor: getGroupColor(contact.group_name) }}
                   />
 
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-zhuque text-2xl truncate" style={{ color: theme.cardText }}>
+                      <span className="font-zhuque text-lg truncate" style={{ color: theme.cardText }}>
                         {contact.name}
                       </span>
                       {contact.nickname && (
-                        <span className="font-zhuque text-base truncate" style={{ color: `${theme.cardText}55` }}>
+                        <span className="font-zhuque text-sm truncate" style={{ color: `${theme.cardText}55` }}>
                           ({splitTags(contact.nickname)[0]}{splitTags(contact.nickname).length > 1 ? '...' : ''})
                         </span>
                       )}
@@ -397,7 +397,7 @@ export function RelationsPage() {
                       </div>
                     )}
                     {contact.notes && (
-                      <span className="font-zhuque text-lg mt-1 truncate" style={{ color: `${theme.cardText}99` }}>
+                      <span className="font-zhuque text-sm mt-1 truncate" style={{ color: `${theme.cardText}99` }}>
                         {contact.notes}
                       </span>
                     )}

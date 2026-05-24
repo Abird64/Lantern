@@ -2,7 +2,7 @@
  * 日记服务 - 封装所有日记相关的 Tauri 命令调用
  */
 import { tauriInvoke } from './tauri';
-import type { Journal, JournalEntry, AiDiary } from '@/types/journal';
+import type { Journal, JournalEntry, AiDiary, ExtractedContact } from '@/types/journal';
 import type { CompleteResult } from '@/types/task';
 
 /** 获取或创建指定日期的日记 */
@@ -53,6 +53,20 @@ export async function saveAiDiary(
 /** 日记 XP 结算 */
 export async function completeDiary(date: string): Promise<CompleteResult> {
   return tauriInvoke<CompleteResult>('complete_diary', {
+    input: { date },
+  });
+}
+
+/** 日省反思结果 */
+export interface DailyReflectionResult {
+  reflection: string;
+  xp_result: CompleteResult;
+  contacts: ExtractedContact[];
+}
+
+/** 日省：AI 综合日记+任务+日程生成反思并结算 XP */
+export async function dailyReflection(date: string): Promise<DailyReflectionResult> {
+  return tauriInvoke<DailyReflectionResult>('daily_reflection', {
     input: { date },
   });
 }

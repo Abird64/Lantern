@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import type { Schedule } from '@/types/schedule';
+import { usePageTheme } from '@/hooks/usePageTheme';
+import { hourToPercent } from '@/utils/scheduleLayout';
+
 
 interface EventBlockProps {
   event: Schedule;
@@ -11,33 +14,10 @@ interface EventBlockProps {
   onDragStart?: (event: Schedule, startY: number) => void;
 }
 
-const HOUR_START = 0;
-const HOUR_END = 24;
-
-// 夜间压缩配置（与 WeekView 保持一致）
-const NIGHT_END = 7;
-const NIGHT_RATIO = 0.1;
-const DAY_RATIO = 0.9;
-
-/** 将小时转换为显示位置的百分比（考虑夜间压缩） */
-function hourToPercent(hour: number): number {
-  if (hour <= NIGHT_END) {
-    return (hour / NIGHT_END) * NIGHT_RATIO * 100;
-  } else {
-    const dayProgress = (hour - NIGHT_END) / (HOUR_END - NIGHT_END);
-    return (NIGHT_RATIO + dayProgress * DAY_RATIO) * 100;
-  }
-}
-
-function timeToPercent(timeStr: string): number {
-  const date = new Date(timeStr);
-  const hours = date.getHours() + date.getMinutes() / 60;
-  return hourToPercent(hours);
-}
-
 export function EventBlock({ event, top, height, left, width, onClick, onDragStart }: EventBlockProps) {
+  const t = usePageTheme('schedule');
   const isTaskSync = event.source_type === 'task_sync';
-  const bgColor = event.color || '#F2C94C';
+  const bgColor = event.color || t.accent;
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ y: number; time: number } | null>(null);
 
@@ -91,8 +71,8 @@ export function EventBlock({ event, top, height, left, width, onClick, onDragSta
         left: `${left}%`,
         width: `${width - 1}%`,
         backgroundColor: isTaskSync ? 'transparent' : bgColor,
-        border: isTaskSync ? `2px dashed ${bgColor}` : `1px solid rgba(0,0,0,0.08)`,
-        boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+        border: isTaskSync ? `2px dashed ${bgColor}` : `1px solid ${t.cardText}14`,
+        boxShadow: isDragging ? `0 4px 12px ${t.cardText}33` : `0 1px 3px ${t.cardText}1A`,
         opacity: isTaskSync ? 0.7 : isDragging ? 0.8 : 1,
         zIndex: isDragging ? 100 : 10,
         userSelect: 'none',
@@ -118,76 +98,6 @@ export function EventBlock({ event, top, height, left, width, onClick, onDragSta
       </div>
     </div>
   );
-}
-
-/** 计算事件在周视图中的位置 */
-export function getEventPosition(event: Schedule, dayIndex: number, totalColumns: number) {
-  const top = timeToPercent(event.start_at);
-  let height: number;
-  if (event.end_at) {
-    const endPercent = timeToPercent(event.end_at);
-    height = endPercent - top;
-  } else {
-    height = (1 / HOUR_SPAN) * 100; // 默认 1 小时
-  }
-
-  const colWidth = 100 / 7; // 每列占总宽度的 1/7
-  const left = dayIndex * colWidth;
-
-  return { top, height, left, width: colWidth };
-}
-
-/** 检测重叠事件并分配列 */
-export function layoutEvents(events: Schedule[], dayIndex: number): { event: Schedule; col: number; totalCols: number }[] {
-  const colWidth = 100 / 7;
-  const dayStart = new Date(events[0]?.start_at || new Date().toISOString());
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-
-  // 过滤出这天的事件
-  const dayEvents = events.filter((e) => {
-    const d = new Date(e.start_at);
-    return d >= dayStart && d < dayEnd;
-  });
-
-  if (dayEvents.length === 0) return [];
-
-  // 按开始时间排序
-  dayEvents.sort((a, b) => a.start_at.localeCompare(b.start_at));
-
-  // 贪心分栏
-  const columns: { endTime: string; events: Schedule[] }[] = [];
-
-  for (const event of dayEvents) {
-    let placed = false;
-    for (const col of columns) {
-      if (event.start_at >= col.endTime) {
-        col.events.push(event);
-        col.endTime = event.end_at || event.start_at;
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) {
-      columns.push({
-        endTime: event.end_at || event.start_at,
-        events: [event],
-      });
-    }
-  }
-
-  // 构建结果
-  const result: { event: Schedule; col: number; totalCols: number }[] = [];
-  const totalCols = columns.length;
-
-  for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-    for (const event of columns[colIdx].events) {
-      result.push({ event, col: colIdx, totalCols });
-    }
-  }
-
-  return result;
 }
 
 function formatTimeRange(start: string, end: string | null): string {

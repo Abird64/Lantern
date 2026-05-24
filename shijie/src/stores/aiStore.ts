@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Conversation, AiMessage } from '@/types/ai';
-import { parseToolCalls } from '@/types/ai';
+import { parseToolCalls } from '@/utils/aiParsers';
 import * as aiService from '@/services/aiService';
 
 /** 用于中断正在进行的 AI 请求 */

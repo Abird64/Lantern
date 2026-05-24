@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import type { Schedule, UpdateScheduleInput } from '@/types/schedule';
 
 interface EventDetailProps {
@@ -11,14 +12,6 @@ interface EventDetailProps {
   onDeleteInstance?: (baseId: string, dateStr: string) => void;
   onClose: () => void;
 }
-
-const categories = [
-  { id: '课表', color: '#3A8FB7' },
-  { id: '学习', color: '#4A90D9' },
-  { id: '娱乐', color: '#D4A843' },
-  { id: '工作', color: '#58A968' },
-  { id: '生活', color: '#D98B58' },
-];
 
 function toLocalDatetime(isoStr: string): string {
   const d = new Date(isoStr);
@@ -51,6 +44,17 @@ function parseRecurringInstanceId(id: string): { baseId: string; dateStr: string
 type EditScope = 'this' | 'all';
 
 export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDeleteInstance, onClose }: EventDetailProps) {
+  const t = usePageTheme('schedule');
+  const inputBg = t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)';
+  const surfaceBg = t.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const surfaceHover = t.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
+  const categories = [
+    { id: '课表', color: '#3A8FB7' },
+    { id: '学习', color: '#4A90D9' },
+    { id: '娱乐', color: '#D4A843' },
+    { id: '工作', color: t.accent },
+    { id: '生活', color: '#D98B58' },
+  ];
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(event.title);
   const [startAt, setStartAt] = useState(toLocalDatetime(event.start_at));
@@ -59,10 +63,12 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
   const [location, setLocation] = useState(event.location || '');
   const [description, setDescription] = useState(event.description || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isSaveHovered, setIsSaveHovered] = useState(false);
+  const [isCloseHovered, setIsCloseHovered] = useState(false);
   const [showScopeChoice, setShowScopeChoice] = useState<'edit' | 'delete' | null>(null);
 
   const isTaskSync = event.source_type === 'task_sync';
-  const bgColor = event.color || '#F2C94C';
+  const bgColor = event.color || t.accent;
 
   // 判断是否为重复事件实例
   const recurringInfo = parseRecurringInstanceId(event.id);
@@ -141,8 +147,16 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
     >
+      <style>{`
+        .event-detail-edit-btn { color: ${t.cardText}80; }
+        .event-detail-edit-btn:hover { color: ${t.cardText}; }
+        .event-detail-cancel-btn { background-color: transparent; }
+        .event-detail-cancel-btn:hover { background-color: ${t.cardText}0D; }
+        .event-detail-input::placeholder { color: ${t.cardText}4D; }
+      `}</style>
       <div
-        className="bg-[#F8F5F0] rounded-2xl p-6 w-[400px] shadow-2xl max-h-[80vh] overflow-y-auto"
+        className="rounded-2xl p-6 w-[400px] shadow-2xl max-h-[80vh] overflow-y-auto"
+        style={{ backgroundColor: t.card }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 */}
@@ -152,11 +166,11 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: bgColor }}
             />
-            <span className="text-xs text-[#1A1A1A]/50">
+            <span className="text-xs" style={{ color: `${t.cardText}80` }}>
               {isTaskSync ? '任务同步' : event.category || '日程'}
             </span>
             {isRecurringInstance && (
-              <span className="text-[10px] bg-[#F2C94C]/30 text-[#1A1A1A]/60 px-1.5 py-0.5 rounded-full">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: `${t.cardText}99`, backgroundColor: `${t.accent}4D` }}>
                 重复
               </span>
             )}
@@ -164,7 +178,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
           {!isTaskSync && (
             <button
               onClick={handleEditClick}
-              className="text-xs text-[#1A1A1A]/50 hover:text-[#1A1A1A] transition-colors"
+              className="event-detail-edit-btn text-xs transition-colors"
             >
               {isEditing ? '取消' : '编辑'}
             </button>
@@ -175,12 +189,12 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
           /* 编辑模式 */
           <div className="space-y-4">
             {isRecurringInstance && editScope === 'this' && (
-              <div className="text-[10px] text-[#1A1A1A]/50 bg-[#F2C94C]/10 rounded-lg px-3 py-1.5">
+              <div className="text-[10px] rounded-lg px-3 py-1.5" style={{ color: `${t.cardText}80`, backgroundColor: `${t.accent}1A` }}>
                 仅修改 {recurringInfo?.dateStr} 这一天的实例
               </div>
             )}
             {isRecurringInstance && editScope === 'all' && (
-              <div className="text-[10px] text-[#1A1A1A]/50 bg-[#F2C94C]/10 rounded-lg px-3 py-1.5">
+              <div className="text-[10px] rounded-lg px-3 py-1.5" style={{ color: `${t.cardText}80`, backgroundColor: `${t.accent}1A` }}>
                 修改所有重复实例
               </div>
             )}
@@ -190,35 +204,38 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl bg-white/60 border border-[#D4A017]/30 text-[#1A1A1A] focus:outline-none focus:border-[#F2C94C] text-sm"
+              className="w-full px-4 py-3 rounded-2xl focus:outline-none text-sm"
+              style={{ color: t.cardText, border: `1px solid ${t.accent}4D`, backgroundColor: inputBg }}
               autoFocus
             />
 
             {/* 时间 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-[#1A1A1A]/50 mb-1 block">开始</label>
+                <label className="text-xs mb-1 block" style={{ color: `${t.cardText}80` }}>开始</label>
                 <input
                   type="datetime-local"
                   value={startAt}
                   onChange={(e) => setStartAt(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white/60 border border-[#D4A017]/30 text-[#1A1A1A] focus:outline-none focus:border-[#F2C94C] text-sm"
+                  className="w-full px-3 py-2 rounded-xl focus:outline-none text-sm"
+                  style={{ color: t.cardText, border: `1px solid ${t.accent}4D`, backgroundColor: inputBg }}
                 />
               </div>
               <div>
-                <label className="text-xs text-[#1A1A1A]/50 mb-1 block">结束</label>
+                <label className="text-xs mb-1 block" style={{ color: `${t.cardText}80` }}>结束</label>
                 <input
                   type="datetime-local"
                   value={endAt}
                   onChange={(e) => setEndAt(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white/60 border border-[#D4A017]/30 text-[#1A1A1A] focus:outline-none focus:border-[#F2C94C] text-sm"
+                  className="w-full px-3 py-2 rounded-xl focus:outline-none text-sm"
+                  style={{ color: t.cardText, border: `1px solid ${t.accent}4D`, backgroundColor: inputBg }}
                 />
               </div>
             </div>
 
             {/* 分类 */}
             <div>
-              <label className="text-xs text-[#1A1A1A]/50 mb-2 block">分类</label>
+              <label className="text-xs mb-2 block" style={{ color: `${t.cardText}80` }}>分类</label>
               <div className="flex gap-2 flex-wrap">
                 {categories.map((cat) => (
                   <button
@@ -228,9 +245,13 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
                     className={`px-3 py-1 rounded-full text-xs transition-all ${
                       category === cat.id
                         ? 'text-white shadow-md'
-                        : 'text-[#1A1A1A]/70 bg-white/40 hover:bg-white/60'
+                        : ''
                     }`}
-                    style={category === cat.id ? { backgroundColor: cat.color } : undefined}
+                    style={category === cat.id
+                      ? { backgroundColor: cat.color }
+                      : { color: `${t.cardText}B2`, backgroundColor: surfaceBg }}
+                    onMouseEnter={category !== cat.id ? (e) => (e.currentTarget.style.backgroundColor = surfaceHover) : undefined}
+                    onMouseLeave={category !== cat.id ? (e) => (e.currentTarget.style.backgroundColor = surfaceBg) : undefined}
                   >
                     {cat.id}
                   </button>
@@ -240,25 +261,27 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
 
             {/* 地点 */}
             <div>
-              <label className="text-xs text-[#1A1A1A]/50 mb-1 block">地点</label>
+              <label className="text-xs mb-1 block" style={{ color: `${t.cardText}80` }}>地点</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="可选"
-                className="w-full px-4 py-2 rounded-xl bg-white/60 border border-[#D4A017]/30 text-[#1A1A1A] placeholder-[#1A1A1A]/30 focus:outline-none focus:border-[#F2C94C] text-sm"
+                className="event-detail-input w-full px-4 py-2 rounded-xl focus:outline-none text-sm"
+                style={{ color: t.cardText, border: `1px solid ${t.accent}4D`, backgroundColor: inputBg }}
               />
             </div>
 
             {/* 描述 */}
             <div>
-              <label className="text-xs text-[#1A1A1A]/50 mb-1 block">描述</label>
+              <label className="text-xs mb-1 block" style={{ color: `${t.cardText}80` }}>描述</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="可选"
                 rows={3}
-                className="w-full px-4 py-2 rounded-xl bg-white/60 border border-[#D4A017]/30 text-[#1A1A1A] placeholder-[#1A1A1A]/30 focus:outline-none focus:border-[#F2C94C] text-sm resize-none"
+                className="event-detail-input w-full px-4 py-2 rounded-xl focus:outline-none text-sm resize-none"
+                style={{ color: t.cardText, border: `1px solid ${t.accent}4D`, backgroundColor: inputBg }}
               />
             </div>
 
@@ -273,14 +296,18 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               <div className="flex gap-3">
                 <button
                   onClick={() => { setIsEditing(false); setEditScope('all'); }}
-                  className="px-4 py-2 rounded-full text-sm text-[#1A1A1A]/60 hover:bg-[#1A1A1A]/5 transition-colors"
+                  className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
+                  style={{ color: `${t.cardText}99` }}
                 >
                   取消
                 </button>
                 <button
                   onClick={() => handleSave(editScope)}
                   disabled={!title.trim()}
-                  className="px-4 py-2 rounded-full text-sm bg-[#F2C94C] text-[#1A1A1A] hover:bg-[#F2C94C]/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md"
+                  className="px-4 py-2 rounded-full text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md"
+                  style={{ color: '#fff', backgroundColor: isSaveHovered ? `${t.accent}CC` : t.accent }}
+                  onMouseEnter={() => setIsSaveHovered(true)}
+                  onMouseLeave={() => setIsSaveHovered(false)}
                 >
                   保存
                 </button>
@@ -291,10 +318,10 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
           /* 查看模式 */
           <div className="space-y-4">
             {/* 标题 */}
-            <h2 className="text-xl font-medium text-[#1A1A1A]">{event.title}</h2>
+            <h2 className="text-xl font-medium" style={{ color: t.cardText }}>{event.title}</h2>
 
             {/* 时间 */}
-            <div className="flex items-center gap-2 text-sm text-[#1A1A1A]/70">
+            <div className="flex items-center gap-2 text-sm" style={{ color: `${t.cardText}B2` }}>
               <span>{formatDateTime(event.start_at)}</span>
               {event.end_at && (
                 <>
@@ -306,21 +333,21 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
 
             {/* 地点 */}
             {event.location && (
-              <div className="text-sm text-[#1A1A1A]/70">
+              <div className="text-sm" style={{ color: `${t.cardText}B2` }}>
                 📍 {event.location}
               </div>
             )}
 
             {/* 描述 */}
             {event.description && (
-              <div className="text-sm text-[#1A1A1A]/70 bg-white/40 rounded-xl p-3">
+              <div className="text-sm rounded-xl p-3" style={{ color: `${t.cardText}B2`, backgroundColor: surfaceBg }}>
                 {event.description}
               </div>
             )}
 
             {/* 重复规则 */}
             {event.rrule && (
-              <div className="text-xs text-[#1A1A1A]/50 bg-white/30 rounded-lg px-3 py-2">
+              <div className="text-xs rounded-lg px-3 py-2" style={{ color: `${t.cardText}80`, backgroundColor: t.isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
                 重复: {event.rrule}
               </div>
             )}
@@ -329,7 +356,10 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
             <div className="flex justify-end pt-2">
               <button
                 onClick={onClose}
-                className="px-5 py-2 rounded-full text-sm bg-[#F2C94C] text-[#1A1A1A] hover:bg-[#F2C94C]/80 transition-colors shadow-md"
+                className="px-5 py-2 rounded-full text-sm transition-colors shadow-md"
+                style={{ color: t.cardText, backgroundColor: isCloseHovered ? `${t.accent}CC` : t.accent }}
+                onMouseEnter={() => setIsCloseHovered(true)}
+                onMouseLeave={() => setIsCloseHovered(false)}
               >
                 关闭
               </button>
@@ -340,29 +370,35 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
         {/* 重复事件范围选择 */}
         {showScopeChoice && (
           <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
-            <div className="bg-[#F8F5F0] rounded-2xl p-5 w-[300px] shadow-2xl">
-              <h3 className="text-lg font-medium text-[#1A1A1A] mb-3">
+            <div className="rounded-2xl p-5 w-[300px] shadow-2xl" style={{ backgroundColor: t.card }}>
+              <h3 className="text-lg font-medium mb-3" style={{ color: t.cardText }}>
                 {showScopeChoice === 'edit' ? '编辑范围' : '删除范围'}
               </h3>
-              <p className="text-sm text-[#1A1A1A]/70 mb-4">
+              <p className="text-sm mb-4" style={{ color: `${t.cardText}B2` }}>
                 这是一个重复事件，你想{showScopeChoice === 'edit' ? '修改' : '删除'}哪个范围？
               </p>
               <div className="flex flex-col gap-2">
                 <button
                   onClick={() => handleScopeChoice('this')}
-                  className="w-full px-4 py-3 rounded-xl text-sm text-left bg-white/60 hover:bg-white/80 border border-[#D4A017]/20 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl text-sm text-left transition-colors"
+                  style={{ border: `1px solid ${t.accent}33`, backgroundColor: inputBg }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = t.isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = inputBg)}
                 >
-                  <div className="font-medium text-[#1A1A1A]">只{showScopeChoice === 'edit' ? '修改' : '删除'}这一次</div>
-                  <div className="text-[10px] text-[#1A1A1A]/50 mt-0.5">
+                  <div className="font-medium" style={{ color: t.cardText }}>只{showScopeChoice === 'edit' ? '修改' : '删除'}这一次</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: `${t.cardText}80` }}>
                     仅影响 {recurringInfo?.dateStr} 这一天
                   </div>
                 </button>
                 <button
                   onClick={() => handleScopeChoice('all')}
-                  className="w-full px-4 py-3 rounded-xl text-sm text-left bg-white/60 hover:bg-white/80 border border-[#D4A017]/20 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl text-sm text-left transition-colors"
+                  style={{ border: `1px solid ${t.accent}33`, backgroundColor: inputBg }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = t.isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = inputBg)}
                 >
-                  <div className="font-medium text-[#1A1A1A]">{showScopeChoice === 'edit' ? '修改' : '删除'}所有实例</div>
-                  <div className="text-[10px] text-[#1A1A1A]/50 mt-0.5">
+                  <div className="font-medium" style={{ color: t.cardText }}>{showScopeChoice === 'edit' ? '修改' : '删除'}所有实例</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: `${t.cardText}80` }}>
                     影响整个重复事件系列
                   </div>
                 </button>
@@ -370,7 +406,8 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               <div className="flex justify-end mt-4">
                 <button
                   onClick={() => setShowScopeChoice(null)}
-                  className="px-4 py-2 rounded-full text-sm text-[#1A1A1A]/60 hover:bg-[#1A1A1A]/5 transition-colors"
+                  className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
+                  style={{ color: `${t.cardText}99` }}
                 >
                   取消
                 </button>
@@ -383,14 +420,15 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
         {showDeleteConfirm && !isRecurringInstance && (
           <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
             <div className="bg-[#F8F5F0] rounded-2xl p-5 w-[300px] shadow-2xl">
-              <h3 className="text-lg font-medium text-[#1A1A1A] mb-3">确认删除</h3>
-              <p className="text-sm text-[#1A1A1A]/70 mb-4">
+              <h3 className="text-lg font-medium mb-3" style={{ color: t.cardText }}>确认删除</h3>
+              <p className="text-sm mb-4" style={{ color: `${t.cardText}B2` }}>
                 确定要删除「{event.title}」吗？
               </p>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 rounded-full text-sm text-[#1A1A1A]/60 hover:bg-[#1A1A1A]/5 transition-colors"
+                  className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
+                  style={{ color: `${t.cardText}99` }}
                 >
                   取消
                 </button>

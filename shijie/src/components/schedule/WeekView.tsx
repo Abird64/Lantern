@@ -1,6 +1,17 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Schedule, UpdateScheduleInput } from '@/types/schedule';
-import { EventBlock, getEventPosition, layoutEvents } from './EventBlock';
+import { usePageTheme } from '@/hooks/usePageTheme';
+import { EventBlock } from './EventBlock';
+import {
+  HOUR_START,
+  HOUR_END,
+  hourToPercent,
+  percentToHour,
+  snapToGrid,
+  pad,
+  layoutOverlappingEvents,
+} from '@/utils/scheduleLayout';
+
 
 interface WeekViewProps {
   weekStart: Date;
@@ -10,31 +21,10 @@ interface WeekViewProps {
   onEventUpdate?: (id: string, input: UpdateScheduleInput) => void;
 }
 
-const HOUR_START = 0;
-const HOUR_END = 24;
-
-// 夜间压缩配置
-const NIGHT_END = 7;
-
-// 各区段占比（总和 = 1）
-const NIGHT_RATIO = 0.1;  // 0-7 点占 10%
-const DAY_RATIO = 0.9;    // 7-24 点占 90%
-
-/** 将小时转换为显示位置的百分比 */
-function hourToPercent(hour: number): number {
-  if (hour <= NIGHT_END) {
-    // 0-7 点：压缩
-    return (hour / NIGHT_END) * NIGHT_RATIO * 100;
-  } else {
-    // 7-24 点：正常
-    const dayProgress = (hour - NIGHT_END) / (HOUR_END - NIGHT_END);
-    return (NIGHT_RATIO + dayProgress * DAY_RATIO) * 100;
-  }
-}
-
 const weekDayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEventUpdate }: WeekViewProps) {
+  const t = usePageTheme('schedule');
   // 生成 7 天的日期
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -52,19 +42,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
     if (!gridRef.current) return 0;
     const rect = gridRef.current.getBoundingClientRect();
     const ratio = (clientY - rect.top) / rect.height;
-
-    // 反向计算小时
-    if (ratio <= NIGHT_RATIO) {
-      return (ratio / NIGHT_RATIO) * NIGHT_END;
-    } else {
-      const dayProgress = (ratio - NIGHT_RATIO) / DAY_RATIO;
-      return NIGHT_END + dayProgress * (HOUR_END - NIGHT_END);
-    }
-  }, []);
-
-  // 吸附到 30 分钟刻度
-  const snapToGrid = useCallback((hour: number): number => {
-    return Math.round(hour * 2) / 2; // 四舍五入到 0.5 小时
+    return percentToHour(ratio);
   }, []);
 
   // 处理拖拽开始
@@ -150,9 +128,9 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
   const hasAllDayEvents = allDayEventsByDay.some((events) => events.length > 0);
 
   return (
-    <div className="w-full bg-[#F8F5F0] rounded-2xl relative overflow-hidden flex flex-col">
+    <div className="w-full rounded-2xl relative overflow-hidden flex flex-col" style={{ backgroundColor: t.card }}>
       {/* ========== 表头：星期标签 + 日期 ========== */}
-      <div className="flex border-b border-[#D4A017]/40 flex-shrink-0">
+      <div className="flex flex-shrink-0" style={{ borderBottom: `1px solid ${t.accent}66` }}>
         {/* 时间轴占位 */}
         <div className="w-[52px] flex-shrink-0" />
         {/* 7 列标题 */}
@@ -162,16 +140,19 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
             <div
               key={idx}
               className={`flex-1 py-2 text-center ${
-                isToday ? 'bg-[#F2C94C]/10' : ''
+                isToday ? '' : ''
               }`}
+              style={isToday ? { backgroundColor: `${t.accent}1A` } : undefined}
             >
-              <div className="text-xs text-[#1A1A1A]/50">{weekDayNames[idx]}</div>
+              <div className="text-xs" style={{ color: `${t.cardText}80` }}>{weekDayNames[idx]}</div>
               <div
-                className={`text-lg font-light mt-0.5 ${
-                  isToday
-                    ? 'text-[#1A1A1A] bg-[#F2C94C] rounded-full w-8 h-8 flex items-center justify-center mx-auto'
-                    : 'text-[#1A1A1A]/80'
+                className={`text-lg font-light mt-0.5 w-8 h-8 flex items-center justify-center mx-auto ${
+                  isToday ? 'rounded-full' : ''
                 }`}
+                style={isToday
+                  ? { color: t.cardText, backgroundColor: t.accent }
+                  : { color: `${t.cardText}CC` }
+                }
               >
                 {day.getDate()}
               </div>
@@ -182,14 +163,14 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
 
       {/* ========== 全天事件区域 ========== */}
       {hasAllDayEvents && (
-        <div className="flex border-b border-[#D4A017]/20 flex-shrink-0 min-h-[32px]">
+        <div className="flex flex-shrink-0 min-h-[32px]" style={{ borderBottom: `1px solid ${t.accent}33` }}>
           <div className="w-[52px] flex-shrink-0 flex items-center justify-center">
-            <span className="text-[10px] text-[#1A1A1A]/40">全天</span>
+            <span className="text-[10px]" style={{ color: `${t.cardText}66` }}>全天</span>
           </div>
           {allDayEventsByDay.map((dayEvents, dayIdx) => (
             <div key={dayIdx} className="flex-1 flex flex-col gap-1 py-1 px-0.5">
               {dayEvents.map((event) => {
-                const bgColor = event.color || '#F2C94C';
+                const bgColor = event.color || t.accent;
                 const isTaskSync = event.source_type === 'task_sync';
                 return (
                   <div
@@ -215,8 +196,8 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
       {/* ========== 网格主体 ========== */}
       <div
         ref={gridRef}
-        className="flex overflow-y-auto"
-        style={{ height: 800 }}
+        className="flex"
+        style={{ height: 1200 }}
         onMouseMove={handleDragMove}
         onMouseUp={handleDragEnd}
         onMouseLeave={handleDragEnd}
@@ -226,16 +207,15 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full text-right pr-2 text-[10px] text-[#1A1A1A]/40 -translate-y-1/2"
-              style={{ top: `${hourToPercent(hour)}%` }}
+              className="absolute w-full text-right pr-2 text-[10px] -translate-y-1/2"
+              style={{ top: `${hourToPercent(hour)}%`, color: `${t.cardText}66` }}
             >
               {hour.toString().padStart(2, '0')}:00
             </div>
           ))}
           {/* 夜间压缩区标记 */}
           <div
-            className="absolute left-0 right-0 border-t border-dashed border-[#D4A017]/30"
-            style={{ top: `${hourToPercent(7)}%` }}
+            className="absolute left-0 right-0 border-t border-dashed" style={{ borderColor: `${t.accent}4D`, top: `${hourToPercent(7)}%` }}
           />
         </div>
 
@@ -245,7 +225,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full h-[1px] bg-[#D4A017]/20 left-0"
+              className="absolute w-full h-[1px] left-0" style={{ backgroundColor: `${t.accent}33` }}
               style={{ top: `${hourToPercent(hour)}%` }}
             />
           ))}
@@ -254,7 +234,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {Array.from({ length: 6 }, (_, i) => (
             <div
               key={i}
-              className="absolute top-0 h-full w-[1px] bg-[#D4A017]/20"
+              className="absolute top-0 h-full w-[1px]" style={{ backgroundColor: `${t.accent}33` }}
               style={{ left: `${((i + 1) / 7) * 100}%` }}
             />
           ))}
@@ -266,7 +246,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
             return (
               <div
                 key={`today-${idx}`}
-                className="absolute top-0 h-full bg-[#F2C94C]/5"
+                className="absolute top-0 h-full" style={{ backgroundColor: `${t.accent}0D` }}
                 style={{
                   left: `${(idx / 7) * 100}%`,
                   width: `${100 / 7}%`,
@@ -288,17 +268,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 const y = e.clientY - rect.top;
                 const ratio = y / rect.height;
-                // 反向计算小时（考虑夜间压缩）
-                let hour: number;
-                if (ratio <= NIGHT_RATIO) {
-                  hour = Math.floor((ratio / NIGHT_RATIO) * NIGHT_END);
-                } else if (ratio <= NIGHT_RATIO + DAY_RATIO) {
-                  const dayProgress = (ratio - NIGHT_RATIO) / DAY_RATIO;
-                  hour = Math.floor(NIGHT_END + dayProgress * (LATE_NIGHT_START - NIGHT_END));
-                } else {
-                  const lateProgress = (ratio - NIGHT_RATIO - DAY_RATIO) / LATE_NIGHT_RATIO;
-                  hour = Math.floor(LATE_NIGHT_START + lateProgress * (LATE_NIGHT_END - LATE_NIGHT_START));
-                }
+                const hour = Math.floor(percentToHour(ratio));
                 const clickDate = new Date(day);
                 clickDate.setHours(hour, 0, 0, 0);
                 onSlotClick(clickDate, hour);
@@ -310,72 +280,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {eventsByDay.map((dayEvents, dayIdx) => {
             if (dayEvents.length === 0) return null;
 
-            // 按开始时间排序
-            const sorted = [...dayEvents].sort((a, b) =>
-              a.start_at.localeCompare(b.start_at)
-            );
-
-            // 检测重叠组：只有真正重叠的事件才分栏
-            interface EventWithLayout {
-              event: Schedule;
-              col: number;
-              totalCols: number;
-            }
-
-            const layouts: EventWithLayout[] = [];
-            const processed = new Set<string>();
-
-            for (let i = 0; i < sorted.length; i++) {
-              if (processed.has(sorted[i].id)) continue;
-
-              // 找出与当前事件重叠的所有事件
-              const overlapGroup: Schedule[] = [sorted[i]];
-              const eventEnd = sorted[i].end_at || sorted[i].start_at;
-
-              for (let j = i + 1; j < sorted.length; j++) {
-                if (processed.has(sorted[j].id)) continue;
-                const otherEnd = sorted[j].end_at || sorted[j].start_at;
-                // 检查是否重叠：当前事件的结束时间 > 下一事件的开始时间
-                if (eventEnd > sorted[j].start_at) {
-                  overlapGroup.push(sorted[j]);
-                }
-              }
-
-              if (overlapGroup.length === 1) {
-                // 无重叠，全宽显示
-                layouts.push({ event: overlapGroup[0], col: 0, totalCols: 1 });
-                processed.add(overlapGroup[0].id);
-              } else {
-                // 有重叠，分栏显示
-                const columns: { endTime: string; events: Schedule[] }[] = [];
-                for (const evt of overlapGroup) {
-                  let placed = false;
-                  for (const col of columns) {
-                    const evtEnd = evt.end_at || evt.start_at;
-                    if (evt.start_at >= col.endTime) {
-                      col.events.push(evt);
-                      col.endTime = evtEnd;
-                      placed = true;
-                      break;
-                    }
-                  }
-                  if (!placed) {
-                    columns.push({
-                      endTime: evt.end_at || evt.start_at,
-                      events: [evt],
-                    });
-                  }
-                }
-
-                const totalCols = columns.length;
-                for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-                  for (const evt of columns[colIdx].events) {
-                    layouts.push({ event: evt, col: colIdx, totalCols });
-                    processed.add(evt.id);
-                  }
-                }
-              }
-            }
+            const layouts = layoutOverlappingEvents(dayEvents);
 
             // 渲染事件
             return layouts.map(({ event, col, totalCols }) => {
@@ -474,7 +379,6 @@ function DragIndicator({
   const hour = snapToGrid(yToHour(y));
   const top = hourToPercent(hour);
 
-  const pad = (n: number) => n.toString().padStart(2, '0');
   const timeStr = `${pad(Math.floor(hour))}:${pad(Math.round((hour % 1) * 60))}`;
 
   return (
@@ -483,11 +387,11 @@ function DragIndicator({
       style={{ top: `${top}%` }}
     >
       {/* 时间标签 */}
-      <div className="absolute -left-12 -top-3 bg-[#F2C94C] text-[#1A1A1A] text-xs px-2 py-1 rounded shadow-lg">
+      <div className="absolute -left-12 -top-3 text-xs px-2 py-1 rounded shadow-lg" style={{ backgroundColor: t.accent, color: t.cardText }}>
         {timeStr}
       </div>
       {/* 指示线 */}
-      <div className="w-full h-[2px] bg-[#F2C94C] shadow-lg" />
+      <div className="w-full h-[2px] shadow-lg" style={{ backgroundColor: t.accent }} />
     </div>
   );
 }

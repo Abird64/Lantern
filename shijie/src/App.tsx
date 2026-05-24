@@ -1,5 +1,6 @@
 import { useUIStore } from '@/stores/uiStore';
 import { DropdownMenu } from '@/components/layout';
+import { LanternButton } from '@/components/ai/LanternButton';
 import {
   HomePage,
   TasksPage,
@@ -39,6 +40,7 @@ function App() {
     <div className="h-screen overflow-hidden">
       <DropdownMenu />
       {renderPage()}
+      <LanternButton />
     </div>
   );
 }

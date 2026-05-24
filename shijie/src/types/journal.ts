@@ -21,3 +21,12 @@ export interface AiDiary {
   content: string;
   exists: boolean;
 }
+
+/** 日省提取的联系人 */
+export interface ExtractedContact {
+  name: string;
+  event_summary: string;
+  existing_contact_id: string | null;
+  existing_contact_name: string | null;
+  is_new: boolean;
+}

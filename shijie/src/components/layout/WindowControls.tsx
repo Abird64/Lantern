@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-export function WindowControls() {
+interface WindowControlsProps {
+  isDark?: boolean;
+}
+
+export function WindowControls({ isDark = true }: WindowControlsProps) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   const appWindow = getCurrentWindow();
@@ -27,6 +31,9 @@ export function WindowControls() {
     },
   ];
 
+  const defaultBg = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+  const iconStroke = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+
   return (
     <div className="flex items-center gap-3">
       {buttons.map((btn) => (
@@ -35,13 +42,12 @@ export function WindowControls() {
           title={btn.label}
           className="w-8 h-8 rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center"
           style={{
-            backgroundColor: hovered === btn.id ? btn.color : 'rgba(255, 255, 255, 0.1)',
+            backgroundColor: hovered === btn.id ? btn.color : defaultBg,
           }}
           onMouseEnter={() => setHovered(btn.id)}
           onMouseLeave={() => setHovered(null)}
           onClick={btn.action}
         >
-          {/* 悬停时显示图标 */}
           {hovered === btn.id && (
             <svg
               width="10"
@@ -51,32 +57,29 @@ export function WindowControls() {
               xmlns="http://www.w3.org/2000/svg"
             >
               {btn.id === 0 && (
-                // 最小化 - 横线
                 <path
                   d="M1 5H9"
-                  stroke="rgba(0,0,0,0.5)"
+                  stroke={iconStroke}
                   strokeWidth="1.2"
                   strokeLinecap="round"
                 />
               )}
               {btn.id === 1 && (
-                // 恢复 - 方框
                 <rect
                   x="2"
                   y="2"
                   width="6"
                   height="6"
                   rx="0.5"
-                  stroke="rgba(0,0,0,0.5)"
+                  stroke={iconStroke}
                   strokeWidth="1.2"
                   fill="none"
                 />
               )}
               {btn.id === 2 && (
-                // 关闭 - X
                 <path
                   d="M2 2L8 8M8 2L2 8"
-                  stroke="rgba(0,0,0,0.5)"
+                  stroke={iconStroke}
                   strokeWidth="1.2"
                   strokeLinecap="round"
                 />

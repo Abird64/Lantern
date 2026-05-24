@@ -41,6 +41,7 @@ pub fn run() {
             commands::journal_commands::get_ai_diary,
             commands::journal_commands::save_ai_diary,
             commands::journal_commands::complete_diary,
+            commands::journal_commands::daily_reflection,
             commands::contact_commands::create_contact,
             commands::contact_commands::get_contact,
             commands::contact_commands::list_contacts,

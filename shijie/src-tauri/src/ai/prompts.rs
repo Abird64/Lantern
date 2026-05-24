@@ -54,3 +54,100 @@ pub fn build_system_prompt(personality: &str) -> String {
     prompt.push_str(&base);
     prompt
 }
+
+/// 日省 XP 结算提示词：只评估经验值，调用 settle_diary 工具
+pub fn build_xp_settle_prompt(
+    diary_content: &str,
+    tasks_text: &str,
+    schedules_text: &str,
+) -> String {
+    let diary = if diary_content.trim().is_empty() { "（暂无日记）" } else { diary_content };
+    let tasks = if tasks_text.trim().is_empty() { "（暂无任务）" } else { tasks_text };
+    let schedules = if schedules_text.trim().is_empty() { "（暂无日程）" } else { schedules_text };
+
+    format!(
+        r#"你是经验值评估器。根据以下信息调用 settle_diary 工具分配 XP，不要写任何其他文字。
+
+## 今日日记
+{diary}
+
+## 今日任务
+{tasks}
+
+## 今日日程
+{schedules}
+
+XP 分配规则：
+- 总量 3-10，分配到 2-4 个相关属性，单属性上限 5
+- 学习/读书/刷题/上课 → knowledge
+- 运动/锻炼/健身/跑步 → physique
+- 社交/聚会/联系朋友/团建 → charm + worldliness
+- 写作/创作/设计/编程 → talent
+- 冥想/修行/沉思/反思 → cultivation
+- 含量均衡可适当平均，但要侧重最突出的方面
+"#,
+        diary = diary,
+        tasks = tasks,
+        schedules = schedules,
+    )
+}
+
+/// 日省旁白提示词：只写反思文本，不调任何工具
+pub fn build_reflection_prompt(
+    diary_content: &str,
+    tasks_text: &str,
+    schedules_text: &str,
+) -> String {
+    let diary = if diary_content.trim().is_empty() { "（今日暂无日记）" } else { diary_content };
+    let tasks = if tasks_text.trim().is_empty() { "（暂无任务）" } else { tasks_text };
+    let schedules = if schedules_text.trim().is_empty() { "（暂无日程）" } else { schedules_text };
+
+    format!(
+        r#"你是"提灯"，正在为用户写今天的日记旁白。根据以下信息，写一段温暖有洞察力的今日总结。
+
+## 今日日记
+{diary}
+
+## 今日任务
+{tasks}
+
+## 今日日程
+{schedules}
+
+用 200-400 字写今日总结旁白，这是用户的日记补充：
+- 结合日记内容、任务进展、日程安排综合来写
+- 如果日记为空，侧重任务和日程来评价今天
+- 像朋友一样陪伴鼓励，不肉麻不电商风
+- 不写"接下来""那么""好的"等过渡词
+- 它是完整的小短文，不是工作流程中的一个步骤
+- 用中文，偶有英文点缀可以
+- 只输出旁白正文，不要标题，不加前缀
+"#,
+        diary = diary,
+        tasks = tasks,
+        schedules = schedules,
+    )
+}
+
+/// 联系人提取提示词：从日记中提取人物及关键事件，返回纯 JSON
+pub fn build_contact_extraction_prompt(diary_content: &str) -> String {
+    let diary = if diary_content.trim().is_empty() { "（暂无内容）" } else { diary_content };
+
+    format!(
+        r#"从以下日记中提取所有被提及的人物，以及与该人物相关的关键事件（一句话概括）。
+
+## 日记
+{diary}
+
+## 规则
+- 只提取真实人物（家人、朋友、同学、同事等），不提取虚拟角色或泛指
+- 每个人物的 event_summary 一句话说清"和这个人发生了什么"
+- 没提到任何人则返回空数组
+
+## 输出格式
+返回纯 JSON 数组，不要 markdown 代码块，不要解释：
+[{{"name":"人物名","event_summary":"一句话事件概括"}}]
+"#,
+        diary = diary,
+    )
+}

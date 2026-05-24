@@ -10,22 +10,19 @@ interface CapsuleTabsProps {
   activeId: string;
   onChange: (id: string) => void;
   accentColor?: string;
+  isDark?: boolean;
   className?: string;
 }
 
 /**
  * 统一胶囊分类栏组件
- * 
- * @param items - 分类项列表
- * @param activeId - 当前选中项
- * @param onChange - 切换回调
- * @param accentColor - 主题色，默认使用主绿色
  */
 export function CapsuleTabs({
   items,
   activeId,
   onChange,
   accentColor = '#58A968',
+  isDark = true,
   className = '',
 }: CapsuleTabsProps) {
   return (
@@ -44,7 +41,7 @@ export function CapsuleTabs({
           style={{
             minWidth: capsuleTab.minWidth,
             backgroundColor: activeId === item.id ? accentColor : `${accentColor}30`,
-            color: activeId === item.id ? 'white' : 'rgba(255,255,255,0.8)',
+            color: activeId === item.id ? 'white' : isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
           }}
         >
           {item.label}

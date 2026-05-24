@@ -1,4 +1,5 @@
 export { DropdownMenu } from './DropdownMenu';
-export { HeaderButton } from './HeaderButton';
+export { GridBackground } from './GridBackground';
+
 export { PageContainer } from './PageContainer';
 export { WindowControls } from './WindowControls';

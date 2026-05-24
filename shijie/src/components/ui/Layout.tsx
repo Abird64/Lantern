@@ -32,20 +32,3 @@ export function Container({
 export function Section({ className = '' }: { className?: string }) {
   return <div className={`h-6 ${className}`} />;
 }
-
-/**
- * 页面容器
- */
-export function PageWrapper({ 
-  children, 
-  className = '' 
-}: { 
-  children: ReactNode; 
-  className?: string;
-}) {
-  return (
-    <div className={`h-screen overflow-hidden px-4 md:px-6 lg:px-8 flex flex-col ${className}`}>
-      {children}
-    </div>
-  );
-}

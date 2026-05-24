@@ -2,19 +2,18 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Plus, Trash2, MessageSquare, Copy, StopCircle, Check } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
-import { LanternSvg } from '@/components/ui';
+import { PageContainer, GridBackground } from '@/components/layout';
+import { LanternSvg, NavBar } from '@/components/ui';
 import { ToolCallCard } from '@/components/ai/ToolCallCard';
 import { useAiStore } from '@/stores/aiStore';
-import { parseToolCalls } from '@/types/ai';
+import { parseToolCalls } from '@/utils/aiParsers';
+import { usePageTheme } from '@/hooks/usePageTheme';
 
-/** 复制文字到剪贴板 */
 async function copyText(text: string | null) {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    // fallback: execCommand
     const ta = document.createElement('textarea');
     ta.value = text;
     ta.style.position = 'fixed';
@@ -27,11 +26,15 @@ async function copyText(text: string | null) {
 }
 
 export function HomePage() {
+  const t = usePageTheme('lantern');
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 自适应叠加色
+  const s = (o: number) => t.isDark ? `rgba(255,255,255,${o})` : `rgba(0,0,0,${o})`;
 
   const {
     conversations,
@@ -57,7 +60,6 @@ export function HomePage() {
     fetchConversations();
   }, []);
 
-  // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -67,7 +69,6 @@ export function HomePage() {
     if (!text || isSending) return;
     setInput('');
 
-    // 如果没有当前对话，先创建
     let convId = currentConversation;
     if (!convId) {
       convId = await createConversation(text.slice(0, 20));
@@ -96,41 +97,25 @@ export function HomePage() {
   }, []);
 
   return (
-    <PageContainer className="bg-[#1a1a1a] relative overflow-hidden flex flex-col">
+    <PageContainer className="relative overflow-hidden flex flex-col" bgColor={t.bg}>
       {/* 网格背景 */}
-      <div
-        className="absolute inset-0 opacity-20 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
+      <GridBackground isDark={t.isDark} lineOpacity={0.05} />
 
-      {/* ========== 顶部标题栏 ========== */}
-      <div
-        data-tauri-drag-region
-        className="relative z-10 h-[72px] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8"
-      >
-        <HeaderButton title="助手" />
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl tracking-widest text-white/85 font-light">
-          野径云俱黑，江船火独明
-        </h1>
-        <WindowControls />
-      </div>
+      <NavBar title="拾阶" navColor={t.nav} quote="野径云俱黑，江船火独明" />
 
       {/* ========== 主内容区 ========== */}
       <div className="relative z-10 flex-1 flex overflow-hidden">
 
         {/* 左侧 - 对话列表 */}
         {sidebarOpen && (
-          <div className="w-[240px] flex-shrink-0 border-r border-white/10 flex flex-col">
+          <div className="w-[240px] flex-shrink-0 border-r flex flex-col" style={{ borderColor: s(0.1) }}>
             <div className="p-3">
               <button
                 onClick={handleNewConversation}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-white/8 hover:bg-white/15 text-white/80 text-sm transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm transition-colors"
+                style={{ backgroundColor: s(0.08), color: s(0.8) }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = s(0.15))}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = s(0.08))}
               >
                 <Plus size={16} />
                 新对话
@@ -142,11 +127,19 @@ export function HomePage() {
                 <div
                   key={conv.id}
                   onClick={() => selectConversation(conv.id)}
-                  className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                    currentConversation === conv.id
-                      ? 'bg-white/15 text-white'
-                      : 'hover:bg-white/8 text-white/60'
-                  }`}
+                  className="group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors"
+                  style={{
+                    backgroundColor: currentConversation === conv.id ? s(0.15) : 'transparent',
+                    color: currentConversation === conv.id ? s(0.9) : s(0.6),
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentConversation !== conv.id)
+                      e.currentTarget.style.backgroundColor = s(0.08);
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentConversation !== conv.id)
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
                   <MessageSquare size={14} className="flex-shrink-0" />
                   <span className="flex-1 text-sm truncate">{conv.title}</span>
@@ -155,7 +148,9 @@ export function HomePage() {
                       e.stopPropagation();
                       deleteConversation(conv.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity"
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = s(0.1))}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -170,20 +165,20 @@ export function HomePage() {
           {/* 消息列表 */}
           <div className="flex-1 overflow-y-auto px-8 py-6">
             {!currentConversation || messages.length === 0 ? (
-              /* 空状态 - 提灯 */
               <div className="h-full flex flex-col items-center justify-center">
                 <div className="relative w-[200px] h-[240px] flex items-center justify-center mb-6">
-                  <div className="absolute inset-0 blur-3xl opacity-40 bg-blue-400/20 rounded-full scale-110" />
-                  <LanternSvg />
+                  <div
+                    className="absolute inset-0 blur-3xl opacity-40 rounded-full scale-110"
+                    style={{ backgroundColor: `${t.accent}33` }}
+                  />
+                  <LanternSvg accentColor={t.accent} isDark={t.isDark} />
                 </div>
-                <p className="text-white/35 text-lg font-light">提灯在等你说话呢</p>
+                <p style={{ color: s(0.35) }} className="text-lg font-light">提灯在等你说话呢</p>
               </div>
             ) : (
-              /* 消息气泡 */
               <div className="max-w-[700px] mx-auto space-y-4">
                 {messages.map((msg, i) => {
                   const toolCalls = parseToolCalls(msg.tool_calls);
-                  // 检查是否还有未处理的 tool_call：消息之后不能有 AI 回复
                   const hasAiReplyAfter = messages.slice(i + 1).some(
                     (m) => m.role === 'assistant' && m.content,
                   );
@@ -193,23 +188,22 @@ export function HomePage() {
 
                   return (
                     <div key={msg.id}>
-                      {/* 消息气泡行 */}
                       <div className={`group flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                         <div className="max-w-[80%]">
                           <div
-                            className={`chat-bubble px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                              isUser
-                                ? 'bg-[#58A968]/20 text-white/90 rounded-br-md whitespace-pre-wrap'
-                                : isTool
-                                  ? 'bg-white/3 text-white/30 rounded-bl-md text-xs italic'
-                                  : 'bg-white/8 text-white/80 rounded-bl-md markdown-body'
-                            }`}
+                            className="chat-bubble px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                            style={{
+                              backgroundColor: isUser ? `${t.accent}33` : isTool ? s(0.03) : s(0.08),
+                              color: isUser ? 'rgba(255,255,255,0.9)' : isTool ? s(0.3) : s(0.8),
+                              borderBottomRightRadius: isUser ? '4px' : undefined,
+                              borderBottomLeftRadius: !isUser ? '4px' : undefined,
+                            }}
                           >
                             {msg.role === 'assistant' && msg.content ? (
                               <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
                             ) : isTool ? (
                               <div className="flex items-center gap-1.5">
-                                <div className="w-1 h-1 rounded-full bg-white/20" />
+                                <div className="w-1 h-1 rounded-full" style={{ backgroundColor: s(0.2) }} />
                                 {msg.content}
                               </div>
                             ) : (
@@ -217,7 +211,6 @@ export function HomePage() {
                             )}
                           </div>
 
-                          {/* 操作栏：hover 时显示在气泡下方 */}
                           {(isUser || msg.role === 'assistant') && msg.content && (
                             <div
                               className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
@@ -226,11 +219,20 @@ export function HomePage() {
                             >
                               <button
                                 onClick={() => handleCopy(msg.id, msg.content)}
-                                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-white/25 hover:text-white/60 hover:bg-white/8 transition-colors"
+                                className="flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                                style={{ color: s(0.25) }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.color = s(0.6);
+                                  e.currentTarget.style.backgroundColor = s(0.08);
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.color = s(0.25);
+                                  e.currentTarget.style.backgroundColor = 'transparent';
+                                }}
                                 title="复制"
                               >
                                 {copiedId === msg.id ? (
-                                  <Check size={12} className="text-[#58A968]" />
+                                  <Check size={12} style={{ color: t.accent }} />
                                 ) : (
                                   <Copy size={12} />
                                 )}
@@ -240,7 +242,7 @@ export function HomePage() {
                         </div>
                       </div>
 
-                      {/* 工具调用确认卡片 — 在气泡外，固定宽度 */}
+                      {/* 工具调用确认卡片 */}
                       {(() => {
                         if (hasAiReplyAfter || toolCalls.length === 0) return null;
                         const pendingCalls = toolCalls.filter((tc) =>
@@ -252,12 +254,18 @@ export function HomePage() {
                         return (
                           <div className="flex justify-start mt-2">
                             <div className="w-[320px] space-y-2">
-                              {/* 多个卡片时显示"全部确认"按钮 */}
                               {pendingCalls.length >= 2 && (
                                 <button
                                   onClick={() => executeToolCalls(msg.id)}
                                   disabled={isExecuting}
-                                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 text-xs transition-colors disabled:opacity-50"
+                                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs transition-colors disabled:opacity-50"
+                                  style={{ backgroundColor: s(0.1), color: s(0.7) }}
+                                  onMouseEnter={(e) => {
+                                    if (!isExecuting) e.currentTarget.style.backgroundColor = s(0.15);
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isExecuting) e.currentTarget.style.backgroundColor = s(0.1);
+                                  }}
                                 >
                                   全部确认（{pendingCalls.length} 项）
                                 </button>
@@ -287,7 +295,7 @@ export function HomePage() {
                 })}
                 {isSending && (
                   <div className="flex justify-start">
-                    <div className="bg-white/8 text-white/50 px-4 py-3 rounded-2xl rounded-bl-md text-sm">
+                    <div className="px-4 py-3 rounded-2xl text-sm" style={{ backgroundColor: s(0.08), color: s(0.5), borderBottomLeftRadius: '4px' }}>
                       思考中...
                     </div>
                   </div>
@@ -318,7 +326,11 @@ export function HomePage() {
                 onKeyDown={handleKeyDown}
                 placeholder={isSending ? '等待回复中...' : '说点什么...'}
                 disabled={isSending}
-                className="flex-1 h-[52px] bg-transparent border-b border-white/25 text-white/80 text-lg font-light placeholder:text-white/20 focus:outline-none focus:border-[#58A968]/60 transition-colors px-2 disabled:opacity-50"
+                className="flex-1 h-[52px] bg-transparent text-lg font-light px-2 disabled:opacity-50 focus:outline-none transition-colors"
+                style={{
+                  borderBottom: `1px solid ${s(0.25)}`,
+                  color: s(0.8),
+                }}
               />
               {isSending ? (
                 <button
@@ -332,11 +344,18 @@ export function HomePage() {
                 <button
                   onClick={handleSend}
                   disabled={!input.trim()}
-                  className={`h-[44px] px-7 rounded-full font-medium text-base transition-all flex-shrink-0 ml-4 ${
-                    input.trim()
-                      ? 'bg-white/15 text-white/90 hover:bg-white/25'
-                      : 'bg-white/8 text-white/40 cursor-not-allowed'
-                  }`}
+                  className="h-[44px] px-7 rounded-full font-medium text-base transition-all flex-shrink-0 ml-4"
+                  style={{
+                    backgroundColor: input.trim() ? s(0.15) : s(0.08),
+                    color: input.trim() ? s(0.9) : s(0.4),
+                    cursor: input.trim() ? 'pointer' : 'not-allowed',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (input.trim()) e.currentTarget.style.backgroundColor = s(0.25);
+                  }}
+                  onMouseLeave={(e) => {
+                    if (input.trim()) e.currentTarget.style.backgroundColor = s(0.15);
+                  }}
                 >
                   发送
                 </button>

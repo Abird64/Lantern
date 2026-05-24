@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import type { Schedule } from '@/types/schedule';
+
 
 interface MonthViewProps {
   year: number;
@@ -12,6 +15,8 @@ const weekDayNames = ['周一', '周二', '周三', '周四', '周五', '周六'
 const MAX_VISIBLE_EVENTS = 3;
 
 export function MonthView({ year, month, schedules, onEventClick, onDayClick }: MonthViewProps) {
+  const t = usePageTheme('schedule');
+  const [hoveredCellIdx, setHoveredCellIdx] = useState<number | null>(null);
   // 获取当月第一天
   const firstDay = new Date(year, month, 1);
   // 获取当月最后一天
@@ -48,11 +53,11 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
   };
 
   return (
-    <div className="w-full bg-[#F8F5F0] rounded-2xl overflow-hidden">
+    <div className="w-full rounded-2xl overflow-hidden" style={{ backgroundColor: t.card }}>
       {/* 星期标题 */}
-      <div className="grid grid-cols-7 border-b border-[#D4A017]/20">
+      <div className="grid grid-cols-7" style={{ borderBottom: `1px solid ${t.accent}33` }}>
         {weekDayNames.map((name) => (
-          <div key={name} className="py-2 text-center text-xs text-[#1A1A1A]/50">
+          <div key={name} className="py-2 text-center text-xs" style={{ color: `${t.cardText}80` }}>
             {name}
           </div>
         ))}
@@ -70,19 +75,28 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
           return (
             <div
               key={idx}
-              className={`min-h-[80px] border-b border-r border-[#D4A017]/10 p-1 cursor-pointer transition-colors hover:bg-[#F2C94C]/5 ${
+              className={`min-h-[80px] p-1 cursor-pointer ${
                 !isCurrentMonth ? 'opacity-40' : ''
               }`}
+              style={{
+                borderBottom: `1px solid ${t.accent}1A`,
+                borderRight: `1px solid ${t.accent}1A`,
+                backgroundColor: hoveredCellIdx === idx ? `${t.accent}0D` : undefined,
+              }}
+              onMouseEnter={() => setHoveredCellIdx(idx)}
+              onMouseLeave={() => setHoveredCellIdx(null)}
               onClick={() => onDayClick(day)}
             >
               {/* 日期数字 */}
               <div className="flex justify-end mb-1">
                 <span
                   className={`text-sm w-6 h-6 flex items-center justify-center rounded-full ${
-                    isToday
-                      ? 'bg-[#F2C94C] text-[#1A1A1A] font-medium'
-                      : 'text-[#1A1A1A]/70'
+                    isToday ? 'font-medium' : ''
                   }`}
+                  style={isToday
+                    ? { backgroundColor: t.accent, color: t.cardText }
+                    : { color: `${t.cardText}B3` }
+                  }
                 >
                   {day.getDate()}
                 </span>
@@ -91,7 +105,7 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
               {/* 事件列表 */}
               <div className="space-y-0.5">
                 {visibleEvents.map((event) => {
-                  const bgColor = event.color || '#F2C94C';
+                  const bgColor = event.color || t.accent;
                   const isTaskSync = event.source_type === 'task_sync';
 
                   return (
@@ -115,7 +129,7 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
                 })}
 
                 {hiddenCount > 0 && (
-                  <div className="text-[10px] text-[#1A1A1A]/50 text-center">
+                  <div className="text-[10px] text-center" style={{ color: `${t.cardText}80` }}>
                     +{hiddenCount} 更多
                   </div>
                 )}

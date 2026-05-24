@@ -1,7 +1,7 @@
 import { Menu } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
-import { navbar, windowControls } from '@/styles/theme';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { navbar } from '@/styles/theme';
+import { WindowControls } from '@/components/layout/WindowControls';
 
 interface NavBarProps {
   title: string;
@@ -10,19 +10,11 @@ interface NavBarProps {
   quote?: string;
 }
 
-/**
- * 统一顶部导航栏组件
- * 
- * @param title - 左上角菜单按钮文字
- * @param navColor - 导航栏背景色
- * @param navTitle - 导航栏标题（可选，默认显示诗句）
- * @param quote - 中央诗句标题
- */
-export function NavBar({ 
-  title, 
-  navColor = '#2D3A32', 
+export function NavBar({
+  title,
+  navColor = '#2D3A32',
   navTitle,
-  quote 
+  quote
 }: NavBarProps) {
   const { setMenuOpen } = useUIStore();
 
@@ -52,86 +44,7 @@ export function NavBar({
       </h1>
 
       {/* 右侧 - 窗口控制按钮 */}
-      <div className={`flex items-center ${windowControls.gap}`}>
-        {windowControls.colors.map((btn) => (
-          <WindowControlButton
-            key={btn.id}
-            {...btn}
-          />
-        ))}
-      </div>
+      <WindowControls />
     </div>
-  );
-}
-
-// 窗口控制按钮
-import { useState } from 'react';
-
-interface WindowControlButtonProps {
-  id: number;
-  color: string;
-  label: string;
-}
-
-function WindowControlButton({ id, color, label }: WindowControlButtonProps) {
-  const [hovered, setHovered] = useState(false);
-  const appWindow = getCurrentWindow();
-
-  const handleClick = () => {
-    if (id === 0) appWindow.minimize();
-    else if (id === 1) appWindow.toggleMaximize();
-    else if (id === 2) appWindow.close();
-  };
-
-  return (
-    <button
-      title={label}
-      className={`${windowControls.size} rounded-full transition-all duration-200 cursor-pointer flex items-center justify-center`}
-      style={{
-        backgroundColor: hovered ? color : 'rgba(255, 255, 255, 0.1)',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={handleClick}
-    >
-      {hovered && (
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {id === 0 && (
-            <path
-              d="M1 5H9"
-              stroke="rgba(0,0,0,0.5)"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          )}
-          {id === 1 && (
-            <rect
-              x="2"
-              y="2"
-              width="6"
-              height="6"
-              rx="0.5"
-              stroke="rgba(0,0,0,0.5)"
-              strokeWidth="1.2"
-              fill="none"
-            />
-          )}
-          {id === 2 && (
-            <path
-              d="M2 2L8 8M8 2L2 8"
-              stroke="rgba(0,0,0,0.5)"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          )}
-        </svg>
-      )}
-    </button>
   );
 }

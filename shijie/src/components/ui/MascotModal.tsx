@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Sparkles, X } from 'lucide-react';
+import { usePageTheme } from '@/hooks/usePageTheme';
 
 interface MascotModalProps {
   show: boolean;
@@ -9,6 +10,7 @@ interface MascotModalProps {
 }
 
 export function MascotModal({ show, onClose, title, children }: MascotModalProps) {
+  const t = usePageTheme('lantern');
   if (!show) return null;
 
   return (
@@ -19,7 +21,10 @@ export function MascotModal({ show, onClose, title, children }: MascotModalProps
         onClick={onClose}
       />
       {/* 卡片 — 深色底，统一风格 */}
-      <div className="relative w-full max-w-[400px] rounded-3xl shadow-2xl p-8 mx-4 animate-in slide-in-from-bottom-4 duration-300 bg-[#2A3240]">
+      <div
+        className="relative w-full max-w-[400px] rounded-3xl shadow-2xl p-8 mx-4 animate-in slide-in-from-bottom-4 duration-300"
+        style={{ backgroundColor: t.card }}
+      >
         {/* 头部 */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">

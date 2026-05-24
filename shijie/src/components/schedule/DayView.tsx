@@ -1,6 +1,17 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Schedule, UpdateScheduleInput } from '@/types/schedule';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import { EventBlock } from './EventBlock';
+import {
+  HOUR_START,
+  HOUR_END,
+  hourToPercent,
+  percentToHour,
+  snapToGrid,
+  pad,
+  layoutOverlappingEvents,
+} from '@/utils/scheduleLayout';
+
 
 interface DayViewProps {
   date: Date;
@@ -12,27 +23,10 @@ interface DayViewProps {
   backLabel?: string;
 }
 
-const HOUR_START = 0;
-const HOUR_END = 24;
-
-// 夜间压缩配置
-const NIGHT_END = 7;
-const NIGHT_RATIO = 0.1;
-const DAY_RATIO = 0.9;
-
-/** 将小时转换为显示位置的百分比 */
-function hourToPercent(hour: number): number {
-  if (hour <= NIGHT_END) {
-    return (hour / NIGHT_END) * NIGHT_RATIO * 100;
-  } else {
-    const dayProgress = (hour - NIGHT_END) / (HOUR_END - NIGHT_END);
-    return (NIGHT_RATIO + dayProgress * DAY_RATIO) * 100;
-  }
-}
-
 const weekDayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpdate, onBack, backLabel = '返回周视图' }: DayViewProps) {
+  const t = usePageTheme('schedule');
   // 今天
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -62,18 +56,7 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
     if (!gridRef.current) return 0;
     const rect = gridRef.current.getBoundingClientRect();
     const ratio = (clientY - rect.top) / rect.height;
-
-    if (ratio <= NIGHT_RATIO) {
-      return (ratio / NIGHT_RATIO) * NIGHT_END;
-    } else {
-      const dayProgress = (ratio - NIGHT_RATIO) / DAY_RATIO;
-      return NIGHT_END + dayProgress * (HOUR_END - NIGHT_END);
-    }
-  }, []);
-
-  // 吸附到 30 分钟刻度
-  const snapToGrid = useCallback((hour: number): number => {
-    return Math.round(hour * 2) / 2;
+    return percentToHour(ratio);
   }, []);
 
   // 处理拖拽开始
@@ -118,83 +101,30 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
   }, [draggingEvent, dragY, yToHour, snapToGrid, onEventUpdate]);
 
   // 检测重叠并分栏
-  interface EventWithLayout {
-    event: Schedule;
-    col: number;
-    totalCols: number;
-  }
-
-  const sorted = [...dayEvents].sort((a, b) => a.start_at.localeCompare(b.start_at));
-  const layouts: EventWithLayout[] = [];
-  const processed = new Set<string>();
-
-  for (let i = 0; i < sorted.length; i++) {
-    if (processed.has(sorted[i].id)) continue;
-
-    const overlapGroup: Schedule[] = [sorted[i]];
-    const eventEnd = sorted[i].end_at || sorted[i].start_at;
-
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (processed.has(sorted[j].id)) continue;
-      const otherEnd = sorted[j].end_at || sorted[j].start_at;
-      if (eventEnd > sorted[j].start_at) {
-        overlapGroup.push(sorted[j]);
-      }
-    }
-
-    if (overlapGroup.length === 1) {
-      layouts.push({ event: overlapGroup[0], col: 0, totalCols: 1 });
-      processed.add(overlapGroup[0].id);
-    } else {
-      const columns: { endTime: string; events: Schedule[] }[] = [];
-      for (const evt of overlapGroup) {
-        let placed = false;
-        for (const col of columns) {
-          const evtEnd = evt.end_at || evt.start_at;
-          if (evt.start_at >= col.endTime) {
-            col.events.push(evt);
-            col.endTime = evtEnd;
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) {
-          columns.push({
-            endTime: evt.end_at || evt.start_at,
-            events: [evt],
-          });
-        }
-      }
-
-      const totalCols = columns.length;
-      for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-        for (const evt of columns[colIdx].events) {
-          layouts.push({ event: evt, col: colIdx, totalCols });
-          processed.add(evt.id);
-        }
-      }
-    }
-  }
+  const layouts = layoutOverlappingEvents(dayEvents);
 
   return (
-    <div className="w-full bg-[#F8F5F0] rounded-2xl overflow-hidden flex flex-col">
+    <div className="w-full rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: t.card }}>
       {/* 表头 */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[#D4A017]/20">
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${t.accent}33` }}>
         <button
           onClick={onBack}
-          className="text-sm text-[#1A1A1A]/60 hover:text-[#1A1A1A] transition-colors"
+          className="text-sm transition-colors"
+          style={{ color: `${t.cardText}99` }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = t.cardText)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = `${t.cardText}99`)}
         >
           &larr; {backLabel}
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-lg font-light text-[#1A1A1A]">
+          <span className="text-lg font-light" style={{ color: t.cardText }}>
             {date.getMonth() + 1}月{date.getDate()}日
           </span>
-          <span className="text-sm text-[#1A1A1A]/50">
+          <span className="text-sm" style={{ color: `${t.cardText}80` }}>
             {weekDayNames[date.getDay()]}
           </span>
           {isToday && (
-            <span className="text-xs bg-[#F2C94C] text-[#1A1A1A] px-2 py-0.5 rounded-full">
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: t.accent, color: t.cardText }}>
               今天
             </span>
           )}
@@ -205,8 +135,8 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
       {/* 网格主体 */}
       <div
         ref={gridRef}
-        className="flex overflow-y-auto"
-        style={{ height: 700 }}
+        className="flex"
+        style={{ height: 1200 }}
         onMouseMove={handleDragMove}
         onMouseUp={handleDragEnd}
         onMouseLeave={handleDragEnd}
@@ -216,16 +146,15 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full text-right pr-3 text-xs text-[#1A1A1A]/40 -translate-y-1/2"
-              style={{ top: `${hourToPercent(hour)}%` }}
+              className="absolute w-full text-right pr-3 text-xs -translate-y-1/2"
+              style={{ top: `${hourToPercent(hour)}%`, color: `${t.cardText}66` }}
             >
               {hour.toString().padStart(2, '0')}:00
             </div>
           ))}
           {/* 夜间压缩区标记 */}
           <div
-            className="absolute left-0 right-0 border-t border-dashed border-[#D4A017]/30"
-            style={{ top: `${hourToPercent(7)}%` }}
+            className="absolute left-0 right-0 border-t border-dashed" style={{ borderColor: `${t.accent}4D`, top: `${hourToPercent(7)}%` }}
           />
         </div>
 
@@ -235,14 +164,14 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full h-[1px] bg-[#D4A017]/20 left-0"
+              className="absolute w-full h-[1px] left-0" style={{ backgroundColor: `${t.accent}33` }}
               style={{ top: `${hourToPercent(hour)}%` }}
             />
           ))}
 
           {/* 今天高亮 */}
           {isToday && (
-            <div className="absolute top-0 h-full left-0 right-0 bg-[#F2C94C]/5" />
+            <div className="absolute top-0 h-full left-0 right-0" style={{ backgroundColor: `${t.accent}0D` }} />
           )}
 
           {/* 点击空白区域创建事件 */}
@@ -252,13 +181,7 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               const y = e.clientY - rect.top;
               const ratio = y / rect.height;
-              let hour: number;
-              if (ratio <= NIGHT_RATIO) {
-                hour = Math.floor((ratio / NIGHT_RATIO) * NIGHT_END);
-              } else {
-                const dayProgress = (ratio - NIGHT_RATIO) / DAY_RATIO;
-                hour = Math.floor(NIGHT_END + dayProgress * (HOUR_END - NIGHT_END));
-              }
+              const hour = Math.floor(percentToHour(ratio));
               const clickDate = new Date(date);
               clickDate.setHours(hour, 0, 0, 0);
               onSlotClick(clickDate, hour);
@@ -359,7 +282,6 @@ function DragIndicator({
   const hour = snapToGrid(yToHour(y));
   const top = hourToPercent(hour);
 
-  const pad = (n: number) => n.toString().padStart(2, '0');
   const timeStr = `${pad(Math.floor(hour))}:${pad(Math.round((hour % 1) * 60))}`;
 
   return (
@@ -368,11 +290,11 @@ function DragIndicator({
       style={{ top: `${top}%` }}
     >
       {/* 时间标签 */}
-      <div className="absolute -left-14 -top-3 bg-[#F2C94C] text-[#1A1A1A] text-xs px-2 py-1 rounded shadow-lg">
+      <div className="absolute -left-14 -top-3 text-xs px-2 py-1 rounded shadow-lg" style={{ backgroundColor: t.accent, color: t.cardText }}>
         {timeStr}
       </div>
       {/* 指示线 */}
-      <div className="w-full h-[2px] bg-[#F2C94C] shadow-lg" />
+      <div className="w-full h-[2px] shadow-lg" style={{ backgroundColor: t.accent }} />
     </div>
   );
 }

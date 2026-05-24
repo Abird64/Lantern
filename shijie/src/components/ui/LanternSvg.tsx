@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 
-export function LanternSvg({ className }: { className?: string }) {
+interface LanternSvgProps {
+  className?: string;
+  accentColor?: string;
+  isDark?: boolean;
+}
+
+export function LanternSvg({ className, accentColor = '#58A968', isDark = true }: LanternSvgProps) {
+  const eyeColor = isDark ? '#FFF5E0' : '#5D3A1A';
+  const frameColor = isDark ? '#e8e8e8' : '#4A4A4A';
+  const frameDim = isDark ? '#c0c0c0' : '#6A6A6A';
   const leftEyeRef = useRef<SVGLineElement>(null);
   const rightEyeRef = useRef<SVGLineElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -133,22 +142,22 @@ export function LanternSvg({ className }: { className?: string }) {
             <rect x="0" y="0" width="400" height="155" />
           </clipPath>
           <radialGradient id="lanternGlow" cx="50%" cy="65%" r="35%">
-            <stop offset="0%" stopColor="#5a9fd9" stopOpacity={0.5} />
-            <stop offset="40%" stopColor="#3a7ab0" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="#000" stopOpacity={0} />
+            <stop offset="0%" stopColor={accentColor} stopOpacity={0.4} />
+            <stop offset="50%" stopColor={accentColor} stopOpacity={0.15} />
+            <stop offset="100%" stopColor={accentColor} stopOpacity={0} />
           </radialGradient>
           <radialGradient id="flameGradient" cx="50%" cy="90%" r="60%">
-            <stop offset="0%" stopColor="#7ab8e8" stopOpacity={0.9} />
-            <stop offset="25%" stopColor="#5a9fd9" stopOpacity={0.75} />
-            <stop offset="50%" stopColor="#3d8bc9" stopOpacity={0.55} />
-            <stop offset="75%" stopColor="#2a6ba0" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#1a4a70" stopOpacity={0.15} />
+            <stop offset="0%" stopColor="#FFF5E0" stopOpacity={0.95} />
+            <stop offset="20%" stopColor="#FFE082" stopOpacity={0.85} />
+            <stop offset="50%" stopColor="#FFB74D" stopOpacity={0.5} />
+            <stop offset="75%" stopColor="#FF9800" stopOpacity={0.2} />
+            <stop offset="100%" stopColor="#FFB74D" stopOpacity={0.05} />
           </radialGradient>
           <linearGradient id="flameTip" x1="0%" y1="100%" x2="0%" y2="0%">
-            <stop offset="0%" stopColor="#5a9fd9" stopOpacity={0.7} />
-            <stop offset="40%" stopColor="#7ab8e8" stopOpacity={0.5} />
-            <stop offset="70%" stopColor="#a8d4ff" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#c8e8ff" stopOpacity={0.2} />
+            <stop offset="0%" stopColor="#FFB74D" stopOpacity={0.7} />
+            <stop offset="40%" stopColor="#FFD54F" stopOpacity={0.45} />
+            <stop offset="70%" stopColor="#FFE082" stopOpacity={0.3} />
+            <stop offset="100%" stopColor="#FFF5E0" stopOpacity={0.15} />
           </linearGradient>
           <filter id="softBlur">
             <feGaussianBlur in="SourceGraphic" stdDeviation={3} />
@@ -188,7 +197,7 @@ export function LanternSvg({ className }: { className?: string }) {
               {/* 中央主火舌 */}
               <path
                 d="M202,420 Q195,360 198,300 Q205,250 208,200 Q215,170 222,150 Q228,170 235,200 Q242,250 245,300 Q248,360 245,420 Z"
-                fill="#a8d4ff"
+                fill="#FFF5E0"
                 opacity={0.5}
                 filter="url(#softBlur)"
               />
@@ -215,40 +224,40 @@ export function LanternSvg({ className }: { className?: string }) {
               ref={leftEyeRef}
               className="eye-line"
               x1="165" y1="275" x2="165" y2="285"
-              stroke="#c8e8ff" strokeWidth={12} strokeLinecap="round" opacity={0.9}
+              stroke={eyeColor} strokeWidth={12} strokeLinecap="round" opacity={0.9}
             />
             <line
               ref={rightEyeRef}
               className="eye-line"
               x1="235" y1="275" x2="235" y2="285"
-              stroke="#c8e8ff" strokeWidth={12} strokeLinecap="round" opacity={0.9}
+              stroke={eyeColor} strokeWidth={12} strokeLinecap="round" opacity={0.9}
             />
           </g>
         </g>
 
         {/* 顶部提手圆环 */}
         <g clipPath="url(#ringClip)">
-          <ellipse cx="200" cy="110" rx="75" ry="75" fill="none" stroke="#e8e8e8" strokeWidth={3} />
-          <ellipse cx="200" cy="110" rx="58" ry="58" fill="none" stroke="#e8e8e8" strokeWidth={2} />
+          <ellipse cx="200" cy="110" rx="75" ry="75" fill="none" stroke={frameColor} strokeWidth={3} />
+          <ellipse cx="200" cy="110" rx="58" ry="58" fill="none" stroke={frameColor} strokeWidth={2} />
         </g>
 
         {/* 顶部连接方块 */}
-        <rect x="175" y="140" width="50" height="15" fill="none" stroke="#e8e8e8" strokeWidth={3} />
-        <rect x="130" y="155" width="140" height="25" fill="none" stroke="#e8e8e8" strokeWidth={3} />
+        <rect x="175" y="140" width="50" height="15" fill="none" stroke={frameColor} strokeWidth={3} />
+        <rect x="130" y="155" width="140" height="25" fill="none" stroke={frameColor} strokeWidth={3} />
 
         {/* 灯体外框 */}
-        <path d="M130,180 L70,280 L130,430" fill="none" stroke="#e8e8e8" strokeWidth={3} />
-        <path d="M270,180 L330,280 L270,430" fill="none" stroke="#e8e8e8" strokeWidth={3} />
-        <path d="M145,180 L90,280 L145,430" fill="none" stroke="#c0c0c0" strokeWidth={2} />
-        <path d="M255,180 L310,280 L255,430" fill="none" stroke="#c0c0c0" strokeWidth={2} />
+        <path d="M130,180 L70,280 L130,430" fill="none" stroke={frameColor} strokeWidth={3} />
+        <path d="M270,180 L330,280 L270,430" fill="none" stroke={frameColor} strokeWidth={3} />
+        <path d="M145,180 L90,280 L145,430" fill="none" stroke={frameDim} strokeWidth={2} />
+        <path d="M255,180 L310,280 L255,430" fill="none" stroke={frameDim} strokeWidth={2} />
 
         {/* 玻璃罩边框 */}
-        <line x1="130" y1="180" x2="145" y2="180" stroke="#e8e8e8" strokeWidth={3} />
-        <line x1="255" y1="180" x2="270" y2="180" stroke="#e8e8e8" strokeWidth={3} />
+        <line x1="130" y1="180" x2="145" y2="180" stroke={frameColor} strokeWidth={3} />
+        <line x1="255" y1="180" x2="270" y2="180" stroke={frameColor} strokeWidth={3} />
 
         {/* 底部横条 */}
-        <rect x="120" y="430" width="160" height="18" fill="none" stroke="#e8e8e8" strokeWidth={3} />
-        <rect x="100" y="448" width="200" height="22" fill="none" stroke="#e8e8e8" strokeWidth={3} />
+        <rect x="120" y="430" width="160" height="18" fill="none" stroke={frameColor} strokeWidth={3} />
+        <rect x="100" y="448" width="200" height="22" fill="none" stroke={frameColor} strokeWidth={3} />
       </svg>
     </>
   );

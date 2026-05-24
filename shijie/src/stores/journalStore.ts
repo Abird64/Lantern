@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { Journal } from '@/types/journal';
+import type { Journal, ExtractedContact } from '@/types/journal';
 import type { CompleteResult } from '@/types/task';
 import * as journalService from '@/services/journalService';
+import type { DailyReflectionResult } from '@/services/journalService';
 
 interface JournalState {
   // 当前日记状态
@@ -22,15 +23,17 @@ interface JournalState {
   // AI 面板
   showAiPanel: boolean;
 
+  // 日省面板
+  showReflectionPanel: boolean;
+  contacts: ExtractedContact[];
+
   // 状态
   isLoading: boolean;
   isSaving: boolean;
+  isReflecting: boolean;
   lastSaved: number | null;
   error: string | null;
   xpResult: CompleteResult | null;
-
-  // 内部：自动保存计时器
-  _saveTimer: ReturnType<typeof setTimeout> | null;
 
   // 操作
   setCurrentDate: (date: string) => Promise<void>;
@@ -47,8 +50,13 @@ interface JournalState {
   toggleAiPanel: () => void;
   fetchAiDiary: () => Promise<void>;
 
-  // 日记 XP 结算
-  completeDiary: () => Promise<CompleteResult | null>;
+  // 日记 XP 结算 + AI 反思
+  completeDiary: () => Promise<DailyReflectionResult | null>;
+
+  // 联系人同步
+  removeContact: (index: number) => void;
+  confirmAllContacts: () => void;
+  setShowReflectionPanel: (show: boolean) => void;
 }
 
 function getToday(): string {
@@ -63,6 +71,9 @@ function getYearMonth(date: string): [number, number] {
   const [y, m] = date.split('-').map(Number);
   return [y, m];
 }
+
+// 模块级自动保存计时器（不进入 Zustand state，避免序列化问题）
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useJournalStore = create<JournalState>((set, get) => {
   const today = getToday();
@@ -79,18 +90,20 @@ export const useJournalStore = create<JournalState>((set, get) => {
     timelineEntries: [],
     showTimeline: false,
     showAiPanel: false,
+    showReflectionPanel: false,
+    contacts: [],
     isLoading: false,
     isSaving: false,
+    isReflecting: false,
     lastSaved: null,
     error: null,
     xpResult: null,
-    _saveTimer: null,
 
     setCurrentDate: async (date: string) => {
       // 切换前先保存当前内容
-      const { content, _saveTimer } = get();
       if (_saveTimer) {
         clearTimeout(_saveTimer);
+        _saveTimer = null;
       }
 
       set({ isLoading: true, currentDate: date, error: null });
@@ -103,7 +116,6 @@ export const useJournalStore = create<JournalState>((set, get) => {
           isLoading: false,
           timelineYear: y,
           timelineMonth: m,
-          _saveTimer: null,
         });
       } catch (e) {
         set({ error: String(e), isLoading: false, content: '', journal: null });
@@ -111,31 +123,32 @@ export const useJournalStore = create<JournalState>((set, get) => {
     },
 
     updateContent: (content: string) => {
-      const { _saveTimer, currentDate } = get();
+      const { currentDate } = get();
       set({ content });
 
       // 清除已有计时器
       if (_saveTimer) clearTimeout(_saveTimer);
 
       // 1.5s 后自动保存
-      const timer = setTimeout(async () => {
+      _saveTimer = setTimeout(async () => {
         set({ isSaving: true });
         try {
           const journal = await journalService.saveJournal(currentDate, content);
-          set({ journal, isSaving: false, lastSaved: Date.now(), _saveTimer: null });
+          set({ journal, isSaving: false, lastSaved: Date.now() });
         } catch (e) {
-          set({ error: String(e), isSaving: false, _saveTimer: null });
+          set({ error: String(e), isSaving: false });
         }
       }, 1500);
-
-      set({ _saveTimer: timer });
     },
 
     saveNow: async () => {
-      const { _saveTimer, currentDate, content } = get();
-      if (_saveTimer) clearTimeout(_saveTimer);
+      if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+      }
 
-      set({ isSaving: true, _saveTimer: null });
+      const { currentDate, content } = get();
+      set({ isSaving: true });
       try {
         const journal = await journalService.saveJournal(currentDate, content);
         set({ journal, isSaving: false, lastSaved: Date.now() });
@@ -210,14 +223,35 @@ export const useJournalStore = create<JournalState>((set, get) => {
 
     completeDiary: async () => {
       const { currentDate } = get();
+      set({ isReflecting: true, error: null });
       try {
-        const result = await journalService.completeDiary(currentDate);
-        set({ xpResult: result });
+        const result = await journalService.dailyReflection(currentDate);
+        set({
+          xpResult: result.xp_result,
+          aiContent: result.reflection,
+          aiExists: !!result.reflection,
+          contacts: result.contacts || [],
+          isReflecting: false,
+          showReflectionPanel: true,
+        });
         return result;
       } catch (e) {
-        set({ error: String(e) });
+        set({ error: String(e), isReflecting: false });
         return null;
       }
+    },
+
+    removeContact: (index: number) => {
+      const { contacts } = get();
+      set({ contacts: contacts.filter((_, i) => i !== index) });
+    },
+
+    confirmAllContacts: () => {
+      set({ contacts: [] });
+    },
+
+    setShowReflectionPanel: (show: boolean) => {
+      set({ showReflectionPanel: show });
     },
   };
 });

@@ -1,4 +1,5 @@
 import { useJournalStore } from '@/stores/journalStore';
+import { usePageTheme } from '@/hooks/usePageTheme';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -28,16 +29,16 @@ export function TimelineDropdown() {
     currentDate,
   } = useJournalStore();
 
+  const t = usePageTheme('diary');
+
   if (!showTimeline) return null;
 
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfWeek(year, month);
   const today = getToday();
 
-  // 构建日期格子
   const cells: Array<{ day: number; dateStr: string; hasEntry: boolean; isToday: boolean; isCurrent: boolean } | null> = [];
 
-  // 前面的空格
   for (let i = 0; i < firstDay; i++) {
     cells.push(null);
   }
@@ -63,24 +64,37 @@ export function TimelineDropdown() {
     toggleTimeline();
   };
 
+  const txt = t.cardText;
+  const txtDim = txt + 'CC';
+  const txtMid = txt + '80';
+  const txtLight = txt + '4D';
+  const txtBody = txt + 'B3';
+  const hoverBg = txt + '1A';
+
   return (
     <div className="flex justify-center px-8">
       <div className="max-w-[1000px] flex-1">
-        <div className="bg-[#E6D9B8] rounded-2xl p-4 shadow-lg mt-1">
+        <div className="rounded-2xl p-4 shadow-lg mt-1" style={{ backgroundColor: t.card }}>
           {/* 月份导航 */}
           <div className="flex items-center justify-between mb-3 px-2">
             <button
               onClick={() => navigateMonth(-1)}
-              className="text-black/60 hover:text-black transition-colors text-lg font-zhuque"
+              className="transition-colors text-lg font-zhuque"
+              style={{ color: txtMid }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = txt)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = txtMid)}
             >
               ◀
             </button>
-            <span className="font-zhuque text-lg text-black/80">
+            <span className="font-zhuque text-lg" style={{ color: txtDim }}>
               {year}年{month}月
             </span>
             <button
               onClick={() => navigateMonth(1)}
-              className="text-black/60 hover:text-black transition-colors text-lg font-zhuque"
+              className="transition-colors text-lg font-zhuque"
+              style={{ color: txtMid }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = txt)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = txtMid)}
             >
               ▶
             </button>
@@ -91,7 +105,8 @@ export function TimelineDropdown() {
             {WEEKDAYS.map((w) => (
               <div
                 key={w}
-                className="text-center text-sm font-zhuque text-black/40 py-1"
+                className="text-center text-sm font-zhuque py-1"
+                style={{ color: txtLight }}
               >
                 {w}
               </div>
@@ -105,16 +120,16 @@ export function TimelineDropdown() {
                 {cell ? (
                   <button
                     onClick={() => handleDayClick(cell.dateStr)}
-                    className={`
-                      w-9 h-9 rounded-full flex items-center justify-center relative
-                      font-zhuque text-sm transition-colors
-                      ${cell.isCurrent
-                        ? 'bg-[#2C3532] text-white'
+                    className="w-9 h-9 rounded-full flex items-center justify-center relative font-zhuque text-sm transition-colors"
+                    style={
+                      cell.isCurrent
+                        ? { backgroundColor: '#2C3532', color: '#fff' }
                         : cell.isToday
-                          ? 'bg-[#E65C5C]/20 text-[#E65C5C]'
-                          : 'hover:bg-black/10 text-black/70'
-                      }
-                    `}
+                          ? { backgroundColor: '#E65C5C33', color: '#E65C5C' }
+                          : { color: txtBody }
+                    }
+                    onMouseEnter={!cell.isCurrent && !cell.isToday ? (e) => (e.currentTarget.style.backgroundColor = hoverBg) : undefined}
+                    onMouseLeave={!cell.isCurrent && !cell.isToday ? (e) => (e.currentTarget.style.backgroundColor = 'transparent') : undefined}
                   >
                     {cell.day}
                     {cell.hasEntry && !cell.isCurrent && (

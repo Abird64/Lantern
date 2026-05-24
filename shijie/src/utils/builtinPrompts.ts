@@ -10,7 +10,7 @@ export interface PromptTemplate {
 export const BUILTIN_PROMPTS: PromptTemplate[] = [
   {
     id: '__recommend_task', title: '推荐任务', builtin: true, sort_order: 1,
-    prompt: '根据我当前的任务列表和权重设置，推荐一个最优任务，告诉我为什么推荐它',
+    prompt: '现在是什么时间？帮我查一下今天的日程安排和当前未完成的任务列表。结合当前时间和日程空档，判断我现在最适合做什么事情。考虑任务的优先级、截止时间、预估耗时是否能在下一个日程开始前完成。给我一个具体的行动建议，并解释为什么现在做这件事最合适。',
   },
   {
     id: '__week_schedule', title: '本周日程', builtin: true, sort_order: 2,

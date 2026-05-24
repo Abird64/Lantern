@@ -1,4 +1,5 @@
 import { useUIStore } from '@/stores/uiStore';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import { Home, ListTodo, Calendar, BookOpen, Users, Sparkles, Settings } from 'lucide-react';
 
 const tabs = [
@@ -13,6 +14,7 @@ const tabs = [
 
 export function DropdownMenu() {
   const { activeTab, setActiveTab, menuOpen, setMenuOpen } = useUIStore();
+  const t = usePageTheme('lantern');
 
   if (!menuOpen) return null;
 
@@ -25,7 +27,10 @@ export function DropdownMenu() {
       />
 
       {/* 下拉菜单 */}
-      <div className="absolute top-20 left-4 w-[200px] bg-[#1B1B1B] rounded-2xl shadow-2xl overflow-hidden">
+      <div
+        className="absolute top-20 left-4 w-[200px] rounded-2xl shadow-2xl overflow-hidden"
+        style={{ backgroundColor: t.bg }}
+      >
         <div className="p-2">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -39,9 +44,10 @@ export function DropdownMenu() {
                 }}
                 className={`w-full h-12 rounded-xl flex items-center gap-3 px-4 transition-all ${
                   isActive
-                    ? 'bg-[#58A968]'
+                    ? ''
                     : 'hover:bg-white/10'
                 }`}
+                style={isActive ? { backgroundColor: t.accent } : undefined}
               >
                 <Icon size={20} className={isActive ? 'text-white' : 'text-white/70'} />
                 <span
