@@ -206,20 +206,14 @@ pub fn import_ics_events(
 
 /// 导出日程为 ICS 格式字符串
 ///
+/// category: 可选分类筛选，传 Some("课表") 则只导出该分类，传 None 导出全部
 /// 返回纯文本 ICS 内容，前端负责保存为 .ics 文件
 #[tauri::command]
 pub fn export_ics_events(
     state: State<'_, DbState>,
+    category: Option<String>,
 ) -> Result<String, String> {
     let conn = state.conn.lock().map_err(|e: std::sync::PoisonError<_>| e.to_string())?;
-
-    // 查询所有非 task_sync 的日程
-    let mut stmt = conn
-        .prepare(
-            "SELECT title, description, start_at, end_at, rrule, is_all_day, location, source_id, exdates
-             FROM schedules WHERE source_type != 'task_sync' ORDER BY start_at ASC",
-        )
-        .map_err(|e| format!("查询日程失败: {}", e))?;
 
     struct RawSchedule {
         title: String,
@@ -233,23 +227,45 @@ pub fn export_ics_events(
         exdates: Option<String>,
     }
 
-    let schedules: Vec<RawSchedule> = stmt
-        .query_map([], |row| {
-            Ok(RawSchedule {
-                title: row.get(0)?,
-                description: row.get(1)?,
-                start_at: row.get(2)?,
-                end_at: row.get(3)?,
-                rrule: row.get(4)?,
-                is_all_day: row.get(5)?,
-                location: row.get(6)?,
-                source_id: row.get(7)?,
-                exdates: row.get(8)?,
-            })
+    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<RawSchedule> {
+        Ok(RawSchedule {
+            title: row.get(0)?,
+            description: row.get(1)?,
+            start_at: row.get(2)?,
+            end_at: row.get(3)?,
+            rrule: row.get(4)?,
+            is_all_day: row.get(5)?,
+            location: row.get(6)?,
+            source_id: row.get(7)?,
+            exdates: row.get(8)?,
         })
-        .map_err(|e| format!("查询日程失败: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("读取日程数据失败: {}", e))?;
+    }
+
+    let schedules: Vec<RawSchedule> = if let Some(ref cat) = category {
+        let mut stmt = conn
+            .prepare(
+                "SELECT title, description, start_at, end_at, rrule, is_all_day, location, source_id, exdates
+                 FROM schedules WHERE source_type != 'task_sync' AND category = ?1 ORDER BY start_at ASC",
+            )
+            .map_err(|e| format!("查询日程失败: {}", e))?;
+        let rows = stmt.query_map(rusqlite::params![cat], map_row)
+            .map_err(|e| format!("查询日程失败: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("读取日程数据失败: {}", e))?;
+        rows
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT title, description, start_at, end_at, rrule, is_all_day, location, source_id, exdates
+                 FROM schedules WHERE source_type != 'task_sync' ORDER BY start_at ASC",
+            )
+            .map_err(|e| format!("查询日程失败: {}", e))?;
+        let rows = stmt.query_map([], map_row)
+            .map_err(|e| format!("查询日程失败: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("读取日程数据失败: {}", e))?;
+        rows
+    };
 
     let mut ics = String::new();
     ics.push_str("BEGIN:VCALENDAR\r\n");

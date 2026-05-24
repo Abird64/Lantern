@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
-import { Card, LanternSvg, MascotModal } from '@/components/ui';
-import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
+import { Card, NavBar } from '@/components/ui';
+import { PageContainer } from '@/components/layout';
 import { TimelineDropdown } from '@/components/diary/TimelineDropdown';
+import { ReflectionPanel } from '@/components/diary/ReflectionPanel';
 import { useJournalStore } from '@/stores/journalStore';
 import { SKILL_COLORS } from '@/styles/theme';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import type { CompleteResult } from '@/types/task';
+
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -14,22 +17,28 @@ function formatDisplayDate(dateStr: string): string {
 }
 
 export function DiaryPage() {
+  const t = usePageTheme('diary');
   const {
     currentDate,
     content,
     isLoading,
     isSaving,
+    isReflecting,
     lastSaved,
+    error,
     showTimeline,
-    showAiPanel,
+    showReflectionPanel,
     aiContent,
-    aiExists,
+    xpResult,
+    contacts,
     updateContent,
     loadToday,
     saveNow,
     toggleTimeline,
-    toggleAiPanel,
     completeDiary,
+    removeContact,
+    confirmAllContacts,
+    setShowReflectionPanel,
   } = useJournalStore();
 
   // 日记结算浮窗
@@ -59,22 +68,16 @@ export function DiaryPage() {
     await saveNow();
     const result = await completeDiary();
     if (result) {
-      setXpToast(result);
+      // 显示 XP 结算浮窗
+      setXpToast(result.xp_result);
       if (toastTimer.current) clearTimeout(toastTimer.current);
       toastTimer.current = setTimeout(() => setXpToast(null), 4000);
     }
   };
 
   return (
-    <PageContainer className="bg-[#F7F3E9] relative">
-      {/* 顶部导航栏 */}
-      <div data-tauri-drag-region className="flex-shrink-0 h-[72px] bg-[#2C3532] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 -mx-4 md:-mx-6 lg:-mx-8">
-        <HeaderButton title="日记" />
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl tracking-widest text-white/85 font-light">
-          人闲桂花落，夜景春山空
-        </h1>
-        <WindowControls />
-      </div>
+    <PageContainer className="relative" bgColor={t.bg}>
+      <NavBar title="日记" navColor={t.nav} quote="人闲桂花落，夜景春山空" />
 
       {/* 固定控制区：日期胶囊 + 时间线 */}
       <div className="flex-shrink-0 flex flex-col items-center pt-6 pb-3">
@@ -84,23 +87,44 @@ export function DiaryPage() {
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTimeline}
-                className="min-w-[200px] py-4 bg-[#E6D9B8] rounded-full px-10 flex items-center justify-center hover:bg-[#d9c9a5] transition-colors cursor-pointer"
+                className="min-w-[200px] py-4 rounded-full px-10 flex items-center justify-center transition-colors cursor-pointer"
+                style={{ backgroundColor: t.card }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d9c9a5')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = t.card)}
               >
                 {isLoading ? (
-                  <span className="font-zhuque text-xl text-black/50">加载中...</span>
+                  <span className="font-zhuque text-xl" style={{ color: `${t.cardText}80` }}>加载中...</span>
                 ) : (
-                  <span className="font-zhuque text-xl text-black">
+                  <span className="font-zhuque text-xl" style={{ color: t.cardText }}>
                     {formatDisplayDate(currentDate)}
                   </span>
                 )}
               </button>
 
+              {/* 日省详情按钮 */}
+              <button
+                onClick={async () => {
+                  // 获取已保存的 AI 日记并打开面板（清除上次日省的 XP/联系人数据）
+                  useJournalStore.setState({ xpResult: null, contacts: [] });
+                  await useJournalStore.getState().fetchAiDiary();
+                  useJournalStore.getState().setShowReflectionPanel(true);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full transition-colors text-sm"
+                style={{ color: `${t.cardText}66` }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = t.cardText)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = `${t.cardText}66`)}
+                title="查看日省详情"
+              >
+                <span className="text-base">✨</span>
+                <span className="font-zhuque">日省详情</span>
+              </button>
+
               {/* 保存状态指示 */}
               {isSaving && (
-                <span className="font-zhuque text-sm text-black/30">保存中...</span>
+                <span className="font-zhuque text-sm" style={{ color: `${t.cardText}4D` }}>保存中...</span>
               )}
               {!isSaving && lastSaved && (
-                <span className="font-zhuque text-sm text-black/30">已保存</span>
+                <span className="font-zhuque text-sm" style={{ color: `${t.cardText}4D` }}>已保存</span>
               )}
             </div>
           </div>
@@ -113,12 +137,17 @@ export function DiaryPage() {
 
       {/* 日记正文 */}
       <div className="flex-1 flex justify-center items-center px-8 pb-20">
+        <style>{`
+          .diary-textarea::placeholder { color: ${t.cardText}4D; }
+        `}</style>
         <Card
           variant="diary"
           className="w-full max-w-[1000px] h-[600px]"
+          style={{ backgroundColor: t.card }}
         >
           <textarea
-            className="w-full h-full bg-transparent resize-none font-zhuque text-xl text-black/80 placeholder:text-black/30 focus:outline-none p-4"
+            className="diary-textarea w-full h-full bg-transparent resize-none font-zhuque text-xl focus:outline-none p-4"
+            style={{ color: t.cardText, caretColor: t.accent }}
             placeholder="在此记录今日点滴..."
             value={content}
             onChange={(e) => updateContent(e.target.value)}
@@ -129,18 +158,34 @@ export function DiaryPage() {
       {/* 日省按钮 */}
       <div className="absolute right-20 bottom-16">
         <button
-          className="w-[100px] h-[60px] bg-[#E65C5C] rounded-full flex items-center justify-center hover:bg-[#d14545] transition-colors shadow-lg"
+          className="w-[100px] h-[60px] rounded-full flex items-center justify-center transition-colors shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          style={{ backgroundColor: t.accent }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d14545')}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = t.accent)}
           onClick={handleRixing}
+          disabled={isReflecting}
         >
-          <span className="font-zhuque text-xl text-white">日省</span>
+          <span className="font-zhuque text-xl text-white">
+            {isReflecting ? '思考中...' : '日省'}
+          </span>
         </button>
       </div>
+
+      {/* 错误提示 */}
+      {error && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 bg-red-500/90 text-white px-6 py-3 rounded-2xl shadow-lg text-sm cursor-pointer"
+          onClick={() => useJournalStore.setState({ error: null })}
+        >
+          {error}
+        </div>
+      )}
 
       {/* XP 结算浮窗 */}
       {xpToast && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
           <div
-            className="pointer-events-auto bg-[#2C3532] rounded-2xl px-8 py-6 shadow-2xl animate-in fade-in zoom-in duration-300"
+            className="pointer-events-auto rounded-2xl px-8 py-6 shadow-2xl animate-in fade-in zoom-in duration-300"
+            style={{ backgroundColor: t.nav }}
             onClick={() => setXpToast(null)}
           >
             <p className="font-zhuque text-xl text-white/90 text-center mb-4 tracking-widest">
@@ -168,40 +213,18 @@ export function DiaryPage() {
         </div>
       )}
 
-      {/* 左下角提灯按钮 - 点击打开 AI 日记 */}
-      <button
-        onClick={toggleAiPanel}
-        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
-        title="AI 日记"
-      >
-        <div className="w-11 h-11">
-          <LanternSvg />
-        </div>
-      </button>
-
-      {/* AI 日记弹窗 */}
-      <MascotModal
-        show={showAiPanel}
-        onClose={toggleAiPanel}
-        title="提灯的日记"
-      >
-        <div className="mb-2">
-          <span className="font-zhuque text-sm opacity-50">{currentDate}</span>
-        </div>
-        {aiExists ? (
-          <div className="font-zhuque text-lg leading-relaxed whitespace-pre-wrap">
-            {aiContent}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-[#E6D9B8] flex items-center justify-center mb-4">
-              <span className="text-2xl">✨</span>
-            </div>
-            <p className="font-zhuque text-lg opacity-50 mb-2">今日暂无旁白</p>
-            <p className="font-zhuque text-sm opacity-40">点击「日省」，让提灯为你写一段今天的旁白</p>
-          </div>
-        )}
-      </MascotModal>
+      {/* 日省详情面板 */}
+      <ReflectionPanel
+        show={showReflectionPanel}
+        date={currentDate}
+        xpResult={xpResult}
+        reflection={aiContent}
+        contacts={contacts}
+        onClose={() => setShowReflectionPanel(false)}
+        onContactSync={(index) => removeContact(index)}
+        onContactIgnore={(index) => removeContact(index)}
+        onConfirmAll={() => confirmAllContacts()}
+      />
     </PageContainer>
   );
 }

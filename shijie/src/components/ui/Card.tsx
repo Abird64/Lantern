@@ -17,8 +17,8 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
 
     const variants = {
       default: 'bg-white/10 rounded-[50px]',
-      task: 'bg-[#E0F7FA] shadow-lg rounded-[50px]',
-      diary: 'bg-[#E6D9B8] rounded-2xl p-10',
+      task: 'bg-[#D4DCD0] shadow-lg rounded-[50px]',
+      diary: 'rounded-2xl p-10',
       relation: 'bg-[#3A4652] rounded-[50px]',
       list: 'bg-[#3A4652] rounded-[40px]',
     };

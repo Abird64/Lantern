@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { HeaderButton, PageContainer, WindowControls } from '@/components/layout';
-import { LanternSvg, MascotModal } from '@/components/ui';
+import { PageContainer, GridBackground } from '@/components/layout';
+import { NavBar } from '@/components/ui';
 import { WeekView } from '@/components/schedule/WeekView';
 import { MonthView } from '@/components/schedule/MonthView';
 import { AgendaView } from '@/components/schedule/AgendaView';
@@ -13,6 +13,8 @@ import { parseIcs } from '@/utils/icsParser';
 import * as scheduleService from '@/services/scheduleService';
 import { startNotificationChecker, stopNotificationChecker } from '@/services/notificationService';
 import { addExdate } from '@/services/scheduleService';
+import { usePageTheme } from '@/hooks/usePageTheme';
+import { Plus } from 'lucide-react';
 import type { Schedule, CreateScheduleInput, UpdateScheduleInput } from '@/types/schedule';
 
 type ViewMode = 'week' | 'month' | 'agenda' | 'day';
@@ -22,6 +24,8 @@ const filters = [
   { id: '课表', label: '课表' },
   { id: '学习', label: '学习' },
   { id: '娱乐', label: '娱乐' },
+  { id: '工作', label: '工作' },
+  { id: '生活', label: '生活' },
 ];
 
 /** 获取某天所在周的周一 */
@@ -42,19 +46,19 @@ function formatWeekLabel(weekMonday: Date): string {
   return `${weekMonday.getFullYear()}年${weekMonday.getMonth() + 1}月${pad(weekMonday.getDate())}日 - ${end.getMonth() + 1}月${pad(end.getDate())}日`;
 }
 
+
 export function SchedulePage() {
+  const t = usePageTheme('schedule');
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekMonday, setWeekMonday] = useState(() => getWeekMonday(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
   const [showForm, setShowForm] = useState(false);
   const [formDefaults, setFormDefaults] = useState<{ start?: string; end?: string }>({});
-  const [activeFilter, setActiveFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState<Schedule | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
-  const [showAiPanel, setShowAiPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { schedules, isLoading, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, filter, setFilter } = useScheduleStore();
+  const { schedules, isLoading, error, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, filter, setFilter } = useScheduleStore();
 
   // 月视图需要的月份
   const currentMonth = weekMonday.getMonth();
@@ -92,10 +96,10 @@ export function SchedulePage() {
     };
   }, [schedules]);
 
-  // 筛选
-  const filteredSchedules = activeFilter === 'all'
+  // 筛选（使用 store 中的 filter 状态）
+  const filteredSchedules = filter === 'all'
     ? schedules
-    : schedules.filter((s) => s.category === activeFilter);
+    : schedules.filter((s) => s.category === filter);
 
   // 导航
   const handlePrev = useCallback(() => {
@@ -256,47 +260,12 @@ export function SchedulePage() {
     e.target.value = '';
   }, [rangeStart, rangeEnd]);
 
-  // 导出 .ics 文件
-  const handleExportIcs = useCallback(async () => {
-    try {
-      const icsContent = await scheduleService.exportIcsEvents();
-      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `schedule_export_${new Date().toISOString().slice(0, 10)}.ics`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setImportResult('导出成功');
-      setTimeout(() => setImportResult(null), 3000);
-    } catch (err) {
-      setImportResult('导出失败：' + String(err));
-      setTimeout(() => setImportResult(null), 3000);
-    }
-  }, []);
-
   return (
-    <PageContainer className="bg-[#953737] relative">
+    <PageContainer className="relative" bgColor={t.bg}>
       {/* 网格背景 */}
-      <div
-        className="absolute inset-0 opacity-10 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)
-          `,
-          backgroundSize: '40px 40px',
-        }}
-      />
+      <GridBackground isDark={t.isDark} />
 
-      {/* ========== 顶部导航栏 ========== */}
-      <div data-tauri-drag-region className="relative z-10 h-[72px] bg-[#2A2A2A] flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-white/10 flex-shrink-0 -mx-4 md:-mx-6 lg:-mx-8">
-        <HeaderButton title="日历" />
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl tracking-widest text-white/85 font-light">
-          墙角数枝梅，凌寒独自开
-        </h1>
-        <WindowControls />
-      </div>
+      <NavBar title="日历" navColor={t.nav} quote="墙角数枝梅，凌寒独自开" />
 
       {/* 固定控制区：筛选 + 导航 */}
       <div className="flex-shrink-0 flex flex-col items-center px-8 pt-6 pb-4 relative z-10">
@@ -308,12 +277,13 @@ export function SchedulePage() {
               {filters.map((f) => (
                 <button
                   key={f.id}
-                  onClick={() => setActiveFilter(f.id)}
-                  className={`min-w-[60px] px-4 py-1.5 rounded-full text-sm font-light tracking-wider transition-all ${
-                    activeFilter === f.id
-                      ? 'bg-[#F2C94C] text-[#1A1A1A] shadow-md'
-                      : 'bg-[#F2C94C]/30 text-white/80 hover:bg-[#F2C94C]/50'
-                  }`}
+                  onClick={() => setFilter(f.id)}
+                  className="min-w-[60px] px-4 py-1.5 rounded-full text-sm font-light tracking-wider transition-all"
+                  style={{
+                    backgroundColor: filter === f.id ? t.accent : `${t.accent}4D`,
+                    color: filter === f.id ? t.cardText : t.isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
+                    boxShadow: filter === f.id ? '0 4px 6px -1px rgba(0,0,0,0.1)' : undefined,
+                  }}
                 >
                   {f.label}
                 </button>
@@ -321,47 +291,20 @@ export function SchedulePage() {
             </div>
 
             {/* 视图切换 */}
-            <div className="flex items-center gap-1 bg-[#F2C94C]/20 rounded-full p-1">
-              <button
-                onClick={() => setViewMode('day')}
-                className={`px-3 py-1 rounded-full text-sm transition-all ${
-                  viewMode === 'day'
-                    ? 'bg-[#F2C94C] text-[#1A1A1A]'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                日
-              </button>
-              <button
-                onClick={() => setViewMode('week')}
-                className={`px-3 py-1 rounded-full text-sm transition-all ${
-                  viewMode === 'week'
-                    ? 'bg-[#F2C94C] text-[#1A1A1A]'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                周
-              </button>
-              <button
-                onClick={() => setViewMode('month')}
-                className={`px-3 py-1 rounded-full text-sm transition-all ${
-                  viewMode === 'month'
-                    ? 'bg-[#F2C94C] text-[#1A1A1A]'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                月
-              </button>
-              <button
-                onClick={() => setViewMode('agenda')}
-                className={`px-3 py-1 rounded-full text-sm transition-all ${
-                  viewMode === 'agenda'
-                    ? 'bg-[#F2C94C] text-[#1A1A1A]'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                近期
-              </button>
+            <div className="flex items-center gap-1 rounded-full p-1" style={{ backgroundColor: `${t.accent}33` }}>
+              {(['day', 'week', 'month', 'agenda'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className="px-3 py-1 rounded-full text-sm transition-all"
+                  style={{
+                    backgroundColor: viewMode === mode ? t.accent : 'transparent',
+                    color: viewMode === mode ? t.cardText : t.isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)',
+                  }}
+                >
+                  {mode === 'day' ? '日' : mode === 'week' ? '周' : mode === 'month' ? '月' : '近期'}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -378,15 +321,18 @@ export function SchedulePage() {
             onPrev={viewMode === 'agenda' ? undefined : viewMode === 'month' ? handlePrevMonth : viewMode === 'day' ? handlePrevDay : handlePrev}
             onNext={viewMode === 'agenda' ? undefined : viewMode === 'month' ? handleNextMonth : viewMode === 'day' ? handleNextDay : handleNext}
             onToday={handleToday}
-            onCreateEvent={handleCreateClick}
             onImportIcs={handleImportIcs}
-            onExportIcs={handleExportIcs}
           />
 
-          {/* 导入结果提示 */}
-          {importResult && (
-            <div className="bg-[#F2C94C] text-[#1A1A1A] px-4 py-2 rounded-full text-sm text-center">
-              {importResult}
+          {/* 导入结果 / 错误提示 */}
+          {(importResult || error) && (
+            <div className="px-4 py-2 rounded-full text-sm text-center"
+              style={{
+                backgroundColor: error ? 'rgba(239,68,68,0.3)' : t.accent,
+                color: error ? 'rgb(254,202,202)' : t.cardText,
+              }}
+            >
+              {error || importResult}
             </div>
           )}
         </div>
@@ -462,28 +408,15 @@ export function SchedulePage() {
         className="hidden"
       />
 
-      {/* 左下角提灯按钮 */}
+      {/* FAB 添加按钮 */}
       <button
-        onClick={() => setShowAiPanel(true)}
-        className="absolute bottom-6 left-6 z-30 w-16 h-16 rounded-full bg-[#1E2A3A] flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer shadow-lg"
-        title="AI 建议"
+        onClick={handleCreateClick}
+        className="fixed bottom-8 right-8 z-30 w-14 h-14 rounded-full text-white shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center justify-center"
+        style={{ backgroundColor: t.accent }}
       >
-        <div className="w-11 h-11">
-          <LanternSvg />
-        </div>
+        <Plus size={28} strokeWidth={2.5} />
       </button>
 
-      {/* AI 建议弹窗 */}
-      <MascotModal
-        show={showAiPanel}
-        onClose={() => setShowAiPanel(false)}
-        title="日程助手"
-      >
-        <div className="text-center py-8">
-          <p className="font-zhuque text-lg">AI 日程建议即将上线</p>
-          <p className="font-zhuque text-sm mt-2 opacity-60">让提灯帮你分析时间安排</p>
-        </div>
-      </MascotModal>
     </PageContainer>
   );
 }
