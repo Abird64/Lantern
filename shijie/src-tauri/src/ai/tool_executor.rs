@@ -43,8 +43,6 @@ struct ToolCreateTaskArgs {
     #[serde(default)]
     estimated_minutes: Option<i32>,
     #[serde(default)]
-    notes: Option<String>,
-    #[serde(default)]
     tags: Option<String>,
     #[serde(default)]
     xp_allocations: Option<Vec<XpAllocation>>,
@@ -53,10 +51,6 @@ struct ToolCreateTaskArgs {
 #[derive(Debug, Deserialize)]
 struct ToolQueryArgs {
     query: String,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    priority: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1368,10 +1362,6 @@ fn status_cn(status: &str) -> &str {
         "cancelled" => "已取消",
         _ => status,
     }
-}
-
-fn now_str() -> String {
-    chrono::Local::now().to_rfc3339()
 }
 
 // ========== 日期解析 ==========

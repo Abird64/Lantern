@@ -155,7 +155,6 @@ pub struct IcsEvent {
     pub location: Option<String>,
     pub category: Option<String>,
     pub calendar_id: Option<String>,
-    pub exdates: Option<String>,
 }
 
 #[derive(Deserialize)]

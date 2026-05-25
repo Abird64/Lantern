@@ -276,6 +276,7 @@ pub fn get_timeline_entries(
 }
 
 /// 删除日记（DB + 文件）
+#[allow(dead_code)]
 pub fn delete_journal(
     conn: &Connection,
     app_data_dir: &Path,

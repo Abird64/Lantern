@@ -110,16 +110,6 @@ pub fn list_skills(conn: &Connection) -> Result<Vec<Skill>, String> {
     Ok(skills)
 }
 
-/// 获取单个技能
-pub fn get_skill(conn: &Connection, id: &str) -> Result<Skill, String> {
-    conn.query_row(
-        &format!("SELECT {} FROM skills WHERE id = ?1", SKILL_COLUMNS),
-        params![id],
-        skill_from_row,
-    )
-    .map_err(|e| format!("Skill not found: {}", e))
-}
-
 /// 获取任务的所有技能XP分配
 pub fn get_task_skills(conn: &Connection, task_id: &str) -> Result<Vec<TaskSkill>, String> {
     let mut stmt = conn
