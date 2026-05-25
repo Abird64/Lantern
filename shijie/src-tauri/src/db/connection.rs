@@ -21,7 +21,7 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<(DbState, AppDataState),
 
     std::fs::create_dir_all(&db_path).map_err(|e| format!("Failed to create data dir: {}", e))?;
 
-    db_path.push("shijie.db");
+    db_path.push("myworld.db");
 
     let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {}", e))?;
 

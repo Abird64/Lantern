@@ -164,8 +164,7 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full h-[1px] left-0" style={{ backgroundColor: `${t.accent}33` }}
-              style={{ top: `${hourToPercent(hour)}%` }}
+              className="absolute w-full h-[1px] left-0" style={{ top: `${hourToPercent(hour)}%`, backgroundColor: `${t.accent}33` }}
             />
           ))}
 
@@ -192,6 +191,9 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
           {layouts.map(({ event, col, totalCols }) => {
             const colWidthPercent = 100 / totalCols;
             const colLeft = col * colWidthPercent;
+            const gap = 1.6; // 卡片两侧留白，视觉居中
+            const cardLeft = colLeft + gap / 2;
+            const cardWidth = colWidthPercent - gap;
 
             const startDate = new Date(event.start_at);
             const startHour = startDate.getHours() + startDate.getMinutes() / 60;
@@ -216,8 +218,8 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
                 event={event}
                 top={top}
                 height={clampedHeight}
-                left={colLeft}
-                width={colWidthPercent}
+                left={cardLeft}
+                width={cardWidth}
                 onClick={onEventClick}
                 onDragStart={handleDragStart}
               />
@@ -230,7 +232,6 @@ export function DayView({ date, schedules, onEventClick, onSlotClick, onEventUpd
           {/* 拖拽指示器 */}
           {draggingEvent && (
             <DragIndicator
-              event={draggingEvent}
               y={dragY}
               gridRef={gridRef}
               yToHour={yToHour}
@@ -265,18 +266,17 @@ function CurrentTimeLine() {
 
 /** 拖拽指示器 */
 function DragIndicator({
-  event,
   y,
   gridRef,
   yToHour,
   snapToGrid,
 }: {
-  event: Schedule;
   y: number;
-  gridRef: React.RefObject<HTMLDivElement>;
+  gridRef: React.RefObject<HTMLDivElement | null>;
   yToHour: (y: number) => number;
   snapToGrid: (hour: number) => number;
 }) {
+  const t = usePageTheme('schedule');
   if (!gridRef.current) return null;
 
   const hour = snapToGrid(yToHour(y));

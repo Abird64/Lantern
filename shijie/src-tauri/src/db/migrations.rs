@@ -270,7 +270,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
     if count == 0 {
         let mut stmt = conn
             .prepare("SELECT id, contact_info, created_at FROM contacts WHERE contact_info IS NOT NULL AND contact_info != ''")
-            .unwrap();
+            .map_err(|e| format!("Migration prepare failed: {}", e))?;
         let rows: Vec<(String, String, String)> = stmt
             .query_map([], |row| {
                 Ok((
@@ -279,7 +279,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
                     row.get::<_, String>(2)?,
                 ))
             })
-            .unwrap()
+            .map_err(|e| format!("Migration query_map failed: {}", e))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -311,6 +311,70 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
     let _ = conn.execute(
         "ALTER TABLE ai_favorites ADD COLUMN message_id TEXT",
         [],
+    );
+
+    // 增量迁移：日历表（用户自建日历视图）
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS calendars (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL UNIQUE,
+            color       TEXT NOT NULL DEFAULT '#3A8FB7',
+            is_default  INTEGER DEFAULT 0,
+            sort_order  INTEGER DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )",
+        [],
+    );
+
+    // 增量迁移：schedules 加 calendar_id
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN calendar_id TEXT",
+        [],
+    );
+
+    // 从现有 category 值创建日历条目并回填 calendar_id
+    let mut cat_stmt = conn
+        .prepare("SELECT DISTINCT category FROM schedules WHERE category IS NOT NULL AND category != ''")
+        .map_err(|e| format!("Migration error: {}", e))?;
+    let categories: Vec<String> = cat_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("Migration error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let cat_colors: std::collections::HashMap<&str, &str> = [
+        ("课表", "#3A8FB7"),
+        ("学习", "#4A90D9"),
+        ("娱乐", "#D4A843"),
+        ("工作", "#58A968"),
+        ("生活", "#D98B58"),
+    ].into_iter().collect();
+
+    for cat in &categories {
+        let cal_id = nanoid::nanoid!();
+        let color = cat_colors.get(cat.as_str()).copied().unwrap_or("#999999");
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO calendars (id, name, color, is_default, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 0, 1, datetime('now'), datetime('now'))",
+            rusqlite::params![cal_id, cat, color],
+        );
+        let _ = conn.execute(
+            "UPDATE schedules SET calendar_id = ?1 WHERE category = ?2 AND calendar_id IS NULL",
+            rusqlite::params![cal_id, cat],
+        );
+    }
+
+    // 插入默认日历（如不存在）
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO calendars (id, name, color, is_default, sort_order, created_at, updated_at)
+         VALUES (?1, '主日历', '#3A8FB7', 1, 0, datetime('now'), datetime('now'))",
+        rusqlite::params![nanoid::nanoid!()],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO calendars (id, name, color, is_default, sort_order, created_at, updated_at)
+         VALUES (?1, '其他', '#999999', 0, 2, datetime('now'), datetime('now'))",
+        rusqlite::params![nanoid::nanoid!()],
     );
 
     log::info!("Database migrations completed");

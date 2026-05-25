@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Schedule } from '@/types/schedule';
 import { usePageTheme } from '@/hooks/usePageTheme';
-import { hourToPercent } from '@/utils/scheduleLayout';
 
 
 interface EventBlockProps {
@@ -69,7 +68,7 @@ export function EventBlock({ event, top, height, left, width, onClick, onDragSta
         top: `${top}%`,
         height: `${Math.max(height, 2)}%`,
         left: `${left}%`,
-        width: `${width - 1}%`,
+        width: `${width}%`,
         backgroundColor: isTaskSync ? 'transparent' : bgColor,
         border: isTaskSync ? `2px dashed ${bgColor}` : `1px solid ${t.cardText}14`,
         boxShadow: isDragging ? `0 4px 12px ${t.cardText}33` : `0 1px 3px ${t.cardText}1A`,

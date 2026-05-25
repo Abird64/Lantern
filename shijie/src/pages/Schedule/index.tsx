@@ -8,7 +8,11 @@ import { DayView } from '@/components/schedule/DayView';
 import { DateNavigator } from '@/components/schedule/DateNavigator';
 import { EventForm } from '@/components/schedule/EventForm';
 import { EventDetail } from '@/components/schedule/EventDetail';
+import { CalendarList } from '@/components/schedule/CalendarList';
+import { CalendarManagerModal } from '@/components/schedule/CalendarManagerModal';
+import { ImportDialog } from '@/components/schedule/ImportDialog';
 import { useScheduleStore } from '@/stores/scheduleStore';
+import { useCalendarStore } from '@/stores/calendarStore';
 import { parseIcs } from '@/utils/icsParser';
 import * as scheduleService from '@/services/scheduleService';
 import { startNotificationChecker, stopNotificationChecker, setNotificationEnabled } from '@/services/notificationService';
@@ -16,37 +20,26 @@ import { useSettingStore } from '@/stores/settingStore';
 import { addExdate } from '@/services/scheduleService';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import { Plus } from 'lucide-react';
-import type { Schedule, CreateScheduleInput, UpdateScheduleInput } from '@/types/schedule';
+import type { Schedule, CreateScheduleInput, UpdateScheduleInput, ParsedIcsEvent } from '@/utils/icsParser';
 
 type ViewMode = 'week' | 'month' | 'agenda' | 'day';
-
-const filters = [
-  { id: 'all', label: '全部' },
-  { id: '课表', label: '课表' },
-  { id: '学习', label: '学习' },
-  { id: '娱乐', label: '娱乐' },
-  { id: '工作', label: '工作' },
-  { id: '生活', label: '生活' },
-];
 
 /** 获取某天所在周的周一 */
 function getWeekMonday(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  const dayOfWeek = d.getDay(); // 0=Sunday
+  const dayOfWeek = d.getDay();
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   d.setDate(d.getDate() + diff);
   return d;
 }
 
-/** 格式化周范围标签 */
 function formatWeekLabel(weekMonday: Date): string {
   const end = new Date(weekMonday);
   end.setDate(end.getDate() + 6);
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${weekMonday.getFullYear()}年${weekMonday.getMonth() + 1}月${pad(weekMonday.getDate())}日 - ${end.getMonth() + 1}月${pad(end.getDate())}日`;
 }
-
 
 export function SchedulePage() {
   const t = usePageTheme('schedule');
@@ -58,56 +51,57 @@ export function SchedulePage() {
   const [formDefaults, setFormDefaults] = useState<{ start?: string; end?: string }>({});
   const [selectedEvent, setSelectedEvent] = useState<Schedule | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [importEvents, setImportEvents] = useState<ParsedIcsEvent[] | null>(null);
+  const [showCalendarManager, setShowCalendarManager] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { schedules, isLoading, error, fetchSchedules, createSchedule, updateSchedule, deleteSchedule, filter, setFilter } = useScheduleStore();
+  const { schedules, error, fetchSchedules, createSchedule, updateSchedule, deleteSchedule } = useScheduleStore();
+  const { visibleCalendarIds, fetchCalendars } = useCalendarStore();
 
-  // 月视图需要的月份
   const currentMonth = weekMonday.getMonth();
   const currentYear = weekMonday.getFullYear();
 
-  // 计算范围
   const rangeStart = viewMode === 'month'
     ? new Date(currentYear, currentMonth, 1).toISOString()
     : viewMode === 'agenda'
-      ? new Date().toISOString() // 近期视图从当前时刻开始
+      ? new Date().toISOString()
       : weekMonday.toISOString();
 
   const rangeEnd = viewMode === 'month'
     ? new Date(currentYear, currentMonth + 1, 1).toISOString()
     : viewMode === 'agenda'
-      ? (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })().toISOString() // 近期视图显示未来 30 天
+      ? (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d; })().toISOString()
       : (() => { const d = new Date(weekMonday); d.setDate(d.getDate() + 7); return d; })().toISOString();
 
-  // 加载数据
+  // 初始化加载日历表
+  useEffect(() => {
+    fetchCalendars();
+  }, []);
+
   useEffect(() => {
     fetchSchedules(rangeStart, rangeEnd);
   }, [weekMonday.getTime(), viewMode, selectedDay.getTime()]);
 
-  // 启动通知检测
   useEffect(() => {
     const notifyEnabled = getSetting('notification.task_reminder') === 'true';
     setNotificationEnabled(notifyEnabled);
-
     startNotificationChecker(
       () => schedules,
       (event) => {
-        // 浏览器通知由 sendNotification 处理，这里可以留给未来的 in-app toast
         console.log(`[日程提醒] ${event.title}`);
       }
     );
-
     return () => {
       stopNotificationChecker();
     };
   }, [schedules, getSetting]);
 
-  // 筛选（使用 store 中的 filter 状态）
-  const filteredSchedules = filter === 'all'
-    ? schedules
-    : schedules.filter((s) => s.category === filter);
+  // 按日历可见性筛选
+  const filteredSchedules = schedules.filter((s) => {
+    if (!s.calendar_id) return true; // null calendar_id 始终可见
+    return visibleCalendarIds.has(s.calendar_id);
+  });
 
-  // 导航
   const handlePrev = useCallback(() => {
     const prev = new Date(weekMonday);
     prev.setDate(prev.getDate() - 7);
@@ -126,7 +120,6 @@ export function SchedulePage() {
     setSelectedDay(today);
   }, []);
 
-  // 月视图导航
   const handlePrevMonth = useCallback(() => {
     const prev = new Date(currentYear, currentMonth - 1, 1);
     setWeekMonday(prev);
@@ -137,17 +130,14 @@ export function SchedulePage() {
     setWeekMonday(next);
   }, [currentYear, currentMonth]);
 
-  // 记录从哪个视图进入日视图
   const [previousView, setPreviousView] = useState<ViewMode>('week');
 
-  // 点击月视图中的某天，切换到日视图
   const handleDayClick = useCallback((date: Date) => {
     setSelectedDay(date);
     setPreviousView('month');
     setViewMode('day');
   }, []);
 
-  // 从日视图返回
   const handleBackFromDay = useCallback(() => {
     if (previousView === 'month') {
       setViewMode('month');
@@ -157,7 +147,6 @@ export function SchedulePage() {
     }
   }, [selectedDay, previousView]);
 
-  // 日视图导航
   const handlePrevDay = useCallback(() => {
     const prev = new Date(selectedDay);
     prev.setDate(prev.getDate() - 1);
@@ -170,7 +159,6 @@ export function SchedulePage() {
     setSelectedDay(next);
   }, [selectedDay]);
 
-  // 创建事件
   const handleSlotClick = useCallback((date: Date, hour: number) => {
     const endDate = new Date(date);
     endDate.setHours(hour + 1);
@@ -208,11 +196,8 @@ export function SchedulePage() {
     fetchSchedules(rangeStart, rangeEnd);
   }, [rangeStart, rangeEnd]);
 
-  // 重复事件：只修改这一次
   const handleUpdateInstance = useCallback(async (baseId: string, dateStr: string, input: UpdateScheduleInput) => {
-    // 1. 给父事件添加 exdate
     await addExdate(baseId, dateStr);
-    // 2. 创建独立事件
     await createSchedule({
       title: input.title || '',
       description: input.description,
@@ -225,14 +210,13 @@ export function SchedulePage() {
     fetchSchedules(rangeStart, rangeEnd);
   }, [rangeStart, rangeEnd]);
 
-  // 重复事件：只删除这一次
   const handleDeleteInstance = useCallback(async (baseId: string, dateStr: string) => {
     await addExdate(baseId, dateStr);
     setSelectedEvent(null);
     fetchSchedules(rangeStart, rangeEnd);
   }, [rangeStart, rangeEnd]);
 
-  // 导入 .ics 文件
+  // 导入 ICS：第一步 → 选文件并解析
   const handleImportIcs = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -251,53 +235,44 @@ export function SchedulePage() {
         return;
       }
 
-      const result = await scheduleService.importIcsEvents(events);
+      // 弹出导入对话框
+      setImportEvents(events);
+    } catch (err) {
+      setImportResult('解析失败：' + String(err));
+      setTimeout(() => setImportResult(null), 3000);
+    }
+
+    e.target.value = '';
+  }, []);
+
+  // 导入 ICS：第二步 → 选择日历并确认
+  const handleImportConfirm = useCallback(async (calendarId: string | null) => {
+    if (!importEvents) return;
+    setImportEvents(null);
+
+    try {
+      const result = await scheduleService.importIcsEvents(importEvents, calendarId ?? undefined);
       setImportResult(`导入 ${result.imported} 个，跳过 ${result.skipped} 个`);
       setTimeout(() => setImportResult(null), 3000);
-
-      // 刷新数据
       fetchSchedules(rangeStart, rangeEnd);
     } catch (err) {
       setImportResult('导入失败：' + String(err));
       setTimeout(() => setImportResult(null), 3000);
     }
-
-    // 清空 input
-    e.target.value = '';
-  }, [rangeStart, rangeEnd]);
+  }, [importEvents, rangeStart, rangeEnd]);
 
   return (
     <PageContainer className="relative" bgColor={t.bg}>
-      {/* 网格背景 */}
       <GridBackground isDark={t.isDark} />
-
       <NavBar title="日历" navColor={t.nav} quote="墙角数枝梅，凌寒独自开" />
 
-      {/* 固定控制区：筛选 + 导航 */}
       <div className="flex-shrink-0 flex flex-col items-center px-8 pt-6 pb-4 relative z-10">
-        {/* 筛选 + 导航 */}
         <div className="w-full max-w-[1000px] space-y-4">
-          {/* 筛选标签 + 视图切换 */}
+          {/* 日历勾选 + 视图切换 */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {filters.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setFilter(f.id)}
-                  className="min-w-[60px] px-4 py-1.5 rounded-full text-sm font-light tracking-wider transition-all"
-                  style={{
-                    backgroundColor: filter === f.id ? t.accent : `${t.accent}4D`,
-                    color: filter === f.id ? t.cardText : t.isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.7)',
-                    boxShadow: filter === f.id ? '0 4px 6px -1px rgba(0,0,0,0.1)' : undefined,
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <CalendarList onRefresh={() => fetchSchedules(rangeStart, rangeEnd)} onManage={() => setShowCalendarManager(true)} />
 
-            {/* 视图切换 */}
-            <div className="flex items-center gap-1 rounded-full p-1" style={{ backgroundColor: `${t.accent}33` }}>
+            <div className="flex items-center gap-1 rounded-full p-1 flex-shrink-0" style={{ backgroundColor: `${t.accent}33` }}>
               {(['day', 'week', 'month', 'agenda'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -314,7 +289,6 @@ export function SchedulePage() {
             </div>
           </div>
 
-          {/* 日期导航 */}
           <DateNavigator
             weekLabel={viewMode === 'agenda'
               ? '近期'
@@ -330,7 +304,6 @@ export function SchedulePage() {
             onImportIcs={handleImportIcs}
           />
 
-          {/* 导入结果 / 错误提示 */}
           {(importResult || error) && (
             <div className="px-4 py-2 rounded-full text-sm text-center"
               style={{
@@ -344,9 +317,7 @@ export function SchedulePage() {
         </div>
       </div>
 
-      {/* 可滚动内容区：日历视图 */}
       <div className="flex-1 overflow-y-auto flex flex-col items-center px-8 pb-8 relative z-10">
-        {/* 日历视图 */}
         <div className="w-full max-w-[1000px]">
           {viewMode === 'week' ? (
             <WeekView
@@ -383,7 +354,6 @@ export function SchedulePage() {
         </div>
       </div>
 
-      {/* 创建表单弹窗 */}
       {showForm && (
         <EventForm
           defaultStart={formDefaults.start}
@@ -393,7 +363,6 @@ export function SchedulePage() {
         />
       )}
 
-      {/* 事件详情弹窗 */}
       {selectedEvent && (
         <EventDetail
           event={selectedEvent}
@@ -405,7 +374,24 @@ export function SchedulePage() {
         />
       )}
 
-      {/* 隐藏的文件输入 */}
+      {/* 导入对话框 */}
+      {importEvents && (
+        <ImportDialog
+          eventCount={importEvents.length}
+          onConfirm={handleImportConfirm}
+          onCancel={() => setImportEvents(null)}
+        />
+      )}
+
+      {/* 日历管理弹窗 */}
+      {showCalendarManager && (
+        <CalendarManagerModal onClose={() => {
+          setShowCalendarManager(false);
+          useCalendarStore.getState().fetchCalendars();
+          fetchSchedules(rangeStart, rangeEnd);
+        }} />
+      )}
+
       <input
         ref={fileInputRef}
         type="file"
@@ -414,7 +400,6 @@ export function SchedulePage() {
         className="hidden"
       />
 
-      {/* FAB 添加按钮 */}
       <button
         onClick={handleCreateClick}
         className="fixed bottom-8 right-8 z-30 w-14 h-14 rounded-full text-white shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center justify-center"
@@ -422,7 +407,6 @@ export function SchedulePage() {
       >
         <Plus size={28} strokeWidth={2.5} />
       </button>
-
     </PageContainer>
   );
 }

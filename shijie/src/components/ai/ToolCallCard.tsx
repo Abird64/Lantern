@@ -74,7 +74,6 @@ function CreateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="确认" confirmColor={info?.color || '#58A968'}
-          borderColor={`${info?.color || '#58A968'}/20`}
         />
       )}
     </div>
@@ -110,7 +109,6 @@ function ExecuteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, inf
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="确认" confirmColor={info?.color || '#7CB342'}
-          borderColor={`${info?.color || '#7CB342'}/20`}
         />
       )}
     </div>
@@ -143,7 +141,6 @@ function DeleteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="确认删除" confirmColor={info?.color || '#E65C5C'}
-          borderColor={`${info?.color || '#E65C5C'}/20`}
         />
       )}
     </div>
@@ -179,7 +176,6 @@ function UpdateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="确认修改" confirmColor={info?.color || '#E8B959'}
-          borderColor={`${info?.color || '#E8B959'}/20`}
         />
       )}
     </div>
@@ -214,7 +210,6 @@ function QueryCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info 
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="执行" confirmColor={info?.color || '#6B9BD2'}
-          borderColor={`${info?.color || '#6B9BD2'}/20`}
         />
       )}
     </div>
@@ -238,7 +233,6 @@ function GenericCard({ toolCall, isExecuting, onConfirm, onCancel, info }: ToolC
       <CardActions
         isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
         confirmLabel="确认" confirmColor={info?.color || '#888'}
-        borderColor="white/10"
       />
     </div>
   );
@@ -258,7 +252,7 @@ function CardHeader({ icon, color, title }: { icon: React.ReactNode; color: stri
 }
 
 function CardActions({
-  isExecuting, onConfirm, onCancel, onModifyClick, confirmLabel, confirmColor, borderColor,
+  isExecuting, onConfirm, onCancel, onModifyClick, confirmLabel, confirmColor,
 }: {
   isExecuting: boolean;
   onConfirm: () => void;
@@ -266,7 +260,6 @@ function CardActions({
   onModifyClick?: () => void;
   confirmLabel: string;
   confirmColor: string;
-  borderColor: string;
 }) {
   return (
     <div className="flex border-t" style={{ borderColor: `rgba(255,255,255,0.06)` }}>
@@ -349,7 +342,7 @@ function CardModifyInput({ onSubmit, onBack }: { onSubmit: (text: string) => voi
 // ========== 工具函数 ==========
 
 /** 从通用参数中提取关键展示字段 */
-function buildDetailLines(toolName: string, params: Record<string, unknown>): string[] {
+function buildDetailLines(_toolName: string, params: Record<string, unknown>): string[] {
   const lines: string[] = [];
 
   // 忽略 query 字段（已在卡片标题区展示）
@@ -390,7 +383,7 @@ function buildDetailLines(toolName: string, params: Record<string, unknown>): st
   return lines.slice(0, 8); // 最多展示8行
 }
 
-function formatValue(key: string, value: unknown): string {
+function formatValue(_key: string, value: unknown): string {
   if (typeof value === 'string') {
     // 截断过长的字符串
     if (value.length > 100) return value.slice(0, 100) + '...';
@@ -415,6 +408,7 @@ const FIELD_LABELS: Record<string, string> = {
   is_all_day: '全天',
   location: '地点',
   category: '分类',
+  calendar_id: '日历',
   rrule: '重复规则',
   reminder: '提醒(分钟前)',
   date: '日期',

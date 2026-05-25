@@ -2,7 +2,7 @@ use crate::db::repositories::schedule_repo;
 use crate::db::connection::DbState;
 use serde::Deserialize;
 use tauri::State;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime};
 
 #[derive(Deserialize)]
 pub struct CreateScheduleInput {
@@ -18,6 +18,7 @@ pub struct CreateScheduleInput {
     pub source_type: Option<String>,
     pub source_id: Option<String>,
     pub category: Option<String>,
+    pub calendar_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -32,6 +33,7 @@ pub struct UpdateScheduleInput {
     pub is_all_day: Option<i32>,
     pub location: Option<String>,
     pub category: Option<String>,
+    pub calendar_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +67,7 @@ pub fn create_schedule(
         input.source_type.as_deref().unwrap_or("manual"),
         input.source_id.as_deref(),
         input.category.as_deref(),
+        input.calendar_id.as_deref(),
     )?;
     serde_json::to_value(schedule).map_err(|e| e.to_string())
 }
@@ -109,6 +112,7 @@ pub fn update_schedule(
         input.is_all_day,
         input.location.as_deref(),
         input.category.as_deref(),
+        input.calendar_id.as_deref(),
     )?;
     serde_json::to_value(schedule).map_err(|e| e.to_string())
 }
@@ -150,20 +154,26 @@ pub struct IcsEvent {
     pub rrule: Option<String>,
     pub location: Option<String>,
     pub category: Option<String>,
+    pub calendar_id: Option<String>,
     pub exdates: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ImportIcsInput {
+    pub events: Vec<IcsEvent>,
+    pub calendar_id: Option<String>,
 }
 
 #[tauri::command]
 pub fn import_ics_events(
     state: State<'_, DbState>,
-    events: Vec<IcsEvent>,
+    input: ImportIcsInput,
 ) -> Result<serde_json::Value, String> {
     let conn = state.conn.lock().map_err(|e: std::sync::PoisonError<_>| e.to_string())?;
     let mut imported = 0;
     let mut skipped = 0;
 
-    for event in &events {
-        // 按 UID 去重：检查 source_type='ics_import' + source_id=uid 是否已存在
+    for event in &input.events {
         let existing = conn.query_row(
             "SELECT id FROM schedules WHERE source_type = 'ics_import' AND source_id = ?1",
             rusqlite::params![event.uid],
@@ -171,7 +181,6 @@ pub fn import_ics_events(
         );
 
         if existing.is_ok() {
-            // 已存在，跳过（或可选择更新）
             skipped += 1;
             continue;
         }
@@ -183,13 +192,14 @@ pub fn import_ics_events(
             &event.start_at,
             event.end_at.as_deref(),
             event.rrule.as_deref(),
-            None, // reminder
-            Some("#3A8FB7"), // 默认天水碧颜色
-            0, // is_all_day
+            None,
+            None,
+            0,
             event.location.as_deref(),
             "ics_import",
             Some(&event.uid),
             event.category.as_deref(),
+            input.calendar_id.as_deref().or(event.calendar_id.as_deref()),
         )?;
 
         imported += 1;
@@ -199,19 +209,18 @@ pub fn import_ics_events(
         "success": true,
         "imported": imported,
         "skipped": skipped,
-        "total": events.len()
+        "total": input.events.len()
     }))
     .map_err(|e| e.to_string())
 }
 
 /// 导出日程为 ICS 格式字符串
 ///
-/// category: 可选分类筛选，传 Some("课表") 则只导出该分类，传 None 导出全部
-/// 返回纯文本 ICS 内容，前端负责保存为 .ics 文件
+/// calendar_id: 可选日历筛选，传 Some(id) 则只导出该日历，传 None 导出全部
 #[tauri::command]
 pub fn export_ics_events(
     state: State<'_, DbState>,
-    category: Option<String>,
+    calendar_id: Option<String>,
 ) -> Result<String, String> {
     let conn = state.conn.lock().map_err(|e: std::sync::PoisonError<_>| e.to_string())?;
 
@@ -241,14 +250,14 @@ pub fn export_ics_events(
         })
     }
 
-    let schedules: Vec<RawSchedule> = if let Some(ref cat) = category {
+    let schedules: Vec<RawSchedule> = if let Some(ref cid) = calendar_id {
         let mut stmt = conn
             .prepare(
                 "SELECT title, description, start_at, end_at, rrule, is_all_day, location, source_id, exdates
-                 FROM schedules WHERE source_type != 'task_sync' AND category = ?1 ORDER BY start_at ASC",
+                 FROM schedules WHERE source_type != 'task_sync' AND calendar_id = ?1 ORDER BY start_at ASC",
             )
             .map_err(|e| format!("查询日程失败: {}", e))?;
-        let rows = stmt.query_map(rusqlite::params![cat], map_row)
+        let rows = stmt.query_map(rusqlite::params![cid], map_row)
             .map_err(|e| format!("查询日程失败: {}", e))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("读取日程数据失败: {}", e))?;
@@ -276,7 +285,6 @@ pub fn export_ics_events(
     for s in &schedules {
         let uid = s.source_id.as_deref().unwrap_or("");
 
-        // 格式化日期时间
         let (dtstart, dtend) = format_ics_datetime(&s.start_at, s.end_at.as_deref(), s.is_all_day != 0);
 
         ics.push_str("BEGIN:VEVENT\r\n");
@@ -294,7 +302,6 @@ pub fn export_ics_events(
             ics.push_str(&format!("DTEND:{}\r\n", de));
         }
 
-        // 如果是全天事件且无结束时间，DTEND 为次日
         if s.is_all_day != 0 && dtend.is_none() {
             if let Ok(date) = NaiveDate::parse_from_str(&s.start_at[..10], "%Y-%m-%d") {
                 let next_day = date.succ_opt().unwrap_or(date);
@@ -314,7 +321,6 @@ pub fn export_ics_events(
             }
         }
 
-        // EXDATE
         if let Some(ref exdates_str) = s.exdates {
             if let Ok(dates) = serde_json::from_str::<Vec<String>>(exdates_str) {
                 for date in &dates {
@@ -330,9 +336,6 @@ pub fn export_ics_events(
     Ok(ics)
 }
 
-/// 将 ISO 8601 时间转为 ICS 属性值
-///
-/// 返回 (DTSTART属性, DTEND属性可选)，属性已包含参数（如 VALUE=DATE）和值
 fn format_ics_datetime(start: &str, end: Option<&str>, is_all_day: bool) -> (String, Option<String>) {
     if is_all_day {
         let start_date = start[..10].replace('-', "");
@@ -345,7 +348,6 @@ fn format_ics_datetime(start: &str, end: Option<&str>, is_all_day: bool) -> (Str
         );
     }
 
-    // 非全天事件：转为本地时间 YYYYMMDDTHHMMSS
     fn to_local(s: &str) -> String {
         if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
             return dt.naive_local().format("%Y%m%dT%H%M%S").to_string();
@@ -364,7 +366,6 @@ fn format_ics_datetime(start: &str, end: Option<&str>, is_all_day: bool) -> (Str
     (start_fmt, end_fmt)
 }
 
-/// ICS 文本转义：\ → \\, ; → \\;, , → \\,, \n → \\n
 fn escape_ics_text(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace(';', "\\;")

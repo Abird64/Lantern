@@ -4,7 +4,7 @@ use chrono::{Datelike, Duration, Local, NaiveDate, Weekday};
 use rusqlite::Connection;
 use serde::Deserialize;
 
-use crate::db::repositories::{contact_repo, journal_repo, schedule_repo, skill_repo, task_repo};
+use crate::db::repositories::{calendar_repo, contact_repo, journal_repo, schedule_repo, skill_repo, task_repo};
 use crate::db::repositories::contact_repo::ContactMethodInput;
 use crate::db::repositories::task_repo::Task;
 
@@ -96,6 +96,8 @@ struct ToolCreateScheduleArgs {
     #[serde(default)]
     category: Option<String>,
     #[serde(default)]
+    calendar_id: Option<String>,
+    #[serde(default)]
     rrule: Option<String>,
     #[serde(default)]
     reminder: Option<String>,
@@ -125,6 +127,8 @@ struct ToolUpdateScheduleArgs {
     location: Option<String>,
     #[serde(default)]
     category: Option<String>,
+    #[serde(default)]
+    calendar_id: Option<String>,
     #[serde(default)]
     is_all_day: Option<bool>,
 }
@@ -253,6 +257,7 @@ pub fn execute_tool(
         // 日程 (4)
         "create_schedule" => execute_create_schedule(conn, arguments),
         "list_schedules_in_range" => execute_list_schedules(conn, arguments),
+        "list_calendars" => execute_list_calendars(conn),
         "update_schedule" => execute_update_schedule(conn, arguments),
         "delete_schedule" => execute_delete_schedule(conn, arguments),
         // 日记 (4)
@@ -760,12 +765,15 @@ fn execute_create_schedule(conn: &Connection, arguments: &str) -> Result<String,
         "manual",
         None,
         args.category.as_deref(),
+        args.calendar_id.as_deref(),
     )?;
 
     let mut result = format!("日程已创建：{}", schedule.title);
     result.push_str(&format!("，开始时间：{}", schedule.start_at));
-    if let Some(ref cat) = schedule.category {
-        result.push_str(&format!("，分类：{}", cat));
+    if let Some(ref cal_id) = schedule.calendar_id {
+        if let Ok(cal) = calendar_repo::get_calendar(conn, cal_id) {
+            result.push_str(&format!("，日历：{}", cal.name));
+        }
     }
     if let Some(ref loc) = schedule.location {
         result.push_str(&format!("，地点：{}", loc));
@@ -786,8 +794,17 @@ fn execute_list_schedules(conn: &Connection, arguments: &str) -> Result<String, 
     }
 
     let mut result = format!("{} 到 {} 共有{}个日程：\n\n", args.start_date, args.end_date, schedules.len());
+    // 预加载日历名称 lookup
+    let calendars = calendar_repo::list_calendars(conn).unwrap_or_default();
+    let cal_name_by_id: std::collections::HashMap<&str, &str> = calendars
+        .iter()
+        .map(|c| (c.id.as_str(), c.name.as_str()))
+        .collect();
     for s in &schedules {
-        let cat = s.category.as_deref().unwrap_or("其他");
+        let cat = s.calendar_id.as_deref()
+            .and_then(|id| cal_name_by_id.get(id))
+            .copied()
+            .unwrap_or("未分类");
         let loc = s.location.as_deref().unwrap_or("");
         let loc_str = if loc.is_empty() { String::new() } else { format!("，地点：{}", loc) };
         result.push_str(&format!("- **{}** ({})，{}", s.title, cat, s.start_at));
@@ -797,6 +814,27 @@ fn execute_list_schedules(conn: &Connection, arguments: &str) -> Result<String, 
         result.push_str(&format!("{}{}\n", loc_str, if s.is_all_day == 1 { " [全天]" } else { "" }));
     }
     result.push_str("\n提示：你可以说[查看某天的详情]或[创建一个新的日程]。");
+    Ok(result)
+}
+
+// ========== 查看日历 ==========
+
+fn execute_list_calendars(conn: &Connection) -> Result<String, String> {
+    let calendars = calendar_repo::list_calendars(conn)?;
+
+    if calendars.is_empty() {
+        return Ok("当前没有日历表。你可以在设置中创建日历。".to_string());
+    }
+
+    let mut result = format!("共有{}个日历：\n\n", calendars.len());
+    for cal in &calendars {
+        let default_mark = if cal.is_default == 1 { " [默认]" } else { "" };
+        result.push_str(&format!(
+            "- **{}** (id: `{}`, 颜色: {}){}\n",
+            cal.name, cal.id, cal.color, default_mark
+        ));
+    }
+    result.push_str("\n提示：创建或修改日程时，可以用 calendar_id 参数指定日历。");
     Ok(result)
 }
 
@@ -879,6 +917,7 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
         args.is_all_day.map(|b| if b { 1 } else { 0 }),
         args.location.as_deref(),
         args.category.as_deref(),
+        args.calendar_id.as_deref(),
     )?;
 
     Ok(format!("日程已更新：{}，开始时间：{}", updated.title, updated.start_at))

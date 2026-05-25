@@ -40,8 +40,9 @@ export function parseIcs(content: string): ParsedIcsEvent[] {
       }
       current = null;
     } else if (current) {
-      const [key, ...valueParts] = line.split(':');
+      const [rawKey, ...valueParts] = line.split(':');
       const value = valueParts.join(':'); // 值中可能有冒号
+      const key = rawKey.split(';')[0]; // 去掉 TZID 等参数
 
       switch (key) {
         case 'UID':

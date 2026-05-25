@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "拾阶",
-  "version": "0.1.0",
-  "identifier": "com.shijie.app",
+  "version": "0.2.0",
+  "identifier": "com.myworld.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,6 +34,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      }
+    },
+    "resources": {
+      "target/release/WebView2Loader.dll": "WebView2Loader.dll"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      }
+    },
+    "resources": {
+      "target/release/WebView2Loader.dll": "WebView2Loader.dll"
+    }
+  }
+}

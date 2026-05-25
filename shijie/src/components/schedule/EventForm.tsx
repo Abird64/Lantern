@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePageTheme } from '@/hooks/usePageTheme';
+import { useCalendarStore } from '@/stores/calendarStore';
 import type { CreateScheduleInput } from '@/types/schedule';
 
 interface EventFormProps {
@@ -8,14 +9,6 @@ interface EventFormProps {
   onSubmit: (input: CreateScheduleInput) => void;
   onCancel: () => void;
 }
-
-const categories = [
-  { id: '课表', color: '#3A8FB7' },
-  { id: '学习', color: '#4A90D9' },
-  { id: '娱乐', color: '#D4A843' },
-  { id: '工作', color: '#58A968' },
-  { id: '生活', color: '#D98B58' },
-];
 
 const repeatOptions = [
   { id: 'none', label: '不重复' },
@@ -60,13 +53,16 @@ function buildRrule(repeat: string, selectedDays: string[]): string | undefined 
 
 export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: EventFormProps) {
   const t = usePageTheme('schedule');
+  const { calendars } = useCalendarStore();
   const [title, setTitle] = useState('');
   const defaultStartVal = defaultStart ? toLocalDatetime(defaultStart) : toLocalDatetime(new Date().toISOString());
   const [startAt, setStartAt] = useState(defaultStartVal);
   const [endAt, setEndAt] = useState(
     defaultEnd ? toLocalDatetime(defaultEnd) : addMinutes(defaultStartVal, 40)
   );
-  const [category, setCategory] = useState('生活');
+  const [calendarId, setCalendarId] = useState<string | null>(
+    calendars.find((c) => c.is_default)?.id ?? calendars[0]?.id ?? null
+  );
   const [repeat, setRepeat] = useState('none');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [isSubmitHovered, setIsSubmitHovered] = useState(false);
@@ -89,15 +85,13 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
     e.preventDefault();
     if (!title.trim()) return;
 
-    const selectedCat = categories.find((c) => c.id === category);
     const rrule = buildRrule(repeat, selectedDays);
 
     onSubmit({
       title: title.trim(),
       start_at: new Date(startAt).toISOString(),
       end_at: endAt ? new Date(endAt).toISOString() : undefined,
-      category,
-      color: selectedCat?.color,
+      calendar_id: calendarId ?? undefined,
       source_type: 'manual',
       rrule,
     });
@@ -166,33 +160,26 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
             />
           </div>
 
-          {/* 分类 */}
+          {/* 日历 */}
           <div>
-            <label className="text-xs mb-2 block" style={{ color: `${t.cardText}80` }}>分类</label>
-            <div className="flex gap-2 flex-wrap">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setCategory(cat.id)}
-                  className={`px-4 py-1.5 rounded-full text-sm transition-all ${
-                    category === cat.id
-                      ? 'text-white shadow-md'
-                      : 'hover:opacity-80'
-                  }`}
-                  style={
-                    category === cat.id
-                      ? { backgroundColor: cat.color }
-                      : {
-                          color: `${t.cardText}B2`,
-                          backgroundColor: t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                        }
-                  }
-                >
-                  {cat.id}
-                </button>
+            <label className="text-xs mb-2 block" style={{ color: `${t.cardText}80` }}>日历</label>
+            <select
+              value={calendarId ?? ''}
+              onChange={(e) => setCalendarId(e.target.value || null)}
+              className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+              style={{
+                backgroundColor: t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                border: `1px solid ${t.accent}4D`,
+                color: t.cardText,
+              }}
+            >
+              <option value="">无分类</option>
+              {calendars.map((cal) => (
+                <option key={cal.id} value={cal.id} style={{ backgroundColor: t.card, color: t.cardText }}>
+                  {cal.name}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           {/* 重复规则 */}

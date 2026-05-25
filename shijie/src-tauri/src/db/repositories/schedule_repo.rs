@@ -1,4 +1,4 @@
-use chrono::Datelike;
+use chrono::{Datelike, TimeZone};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 
@@ -17,12 +17,13 @@ pub struct Schedule {
     pub source_type: String,
     pub source_id: Option<String>,
     pub category: Option<String>,
+    pub calendar_id: Option<String>,
     pub exdates: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
-const SCHEDULE_COLUMNS: &str = "id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, exdates, created_at, updated_at";
+const SCHEDULE_COLUMNS: &str = "id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, exdates, created_at, updated_at";
 
 fn schedule_from_row(row: &Row) -> rusqlite::Result<Schedule> {
     Ok(Schedule {
@@ -39,6 +40,7 @@ fn schedule_from_row(row: &Row) -> rusqlite::Result<Schedule> {
         source_type: row.get("source_type")?,
         source_id: row.get("source_id")?,
         category: row.get("category")?,
+        calendar_id: row.get("calendar_id")?,
         exdates: row.get("exdates")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -68,14 +70,15 @@ pub fn create_schedule(
     source_type: &str,
     source_id: Option<&str>,
     category: Option<&str>,
+    calendar_id: Option<&str>,
 ) -> Result<Schedule, String> {
     let id = gen_id();
     let time = now();
 
     conn.execute(
-        "INSERT INTO schedules (id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, exdates, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL, ?14, ?15)",
-        params![id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, time, time],
+        "INSERT INTO schedules (id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, exdates, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL, ?15, ?16)",
+        params![id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, time, time],
     )
     .map_err(|e| format!("Failed to create schedule: {}", e))?;
 
@@ -106,6 +109,7 @@ pub fn update_schedule(
     is_all_day: Option<i32>,
     location: Option<&str>,
     category: Option<&str>,
+    calendar_id: Option<&str>,
 ) -> Result<Schedule, String> {
     let time = now();
 
@@ -150,6 +154,10 @@ pub fn update_schedule(
     }
     if let Some(v) = category {
         sets.push("category = ?".to_string());
+        param_values.push(Box::new(v.to_string()));
+    }
+    if let Some(v) = calendar_id {
+        sets.push("calendar_id = ?".to_string());
         param_values.push(Box::new(v.to_string()));
     }
 
@@ -293,6 +301,7 @@ pub fn list_schedules_in_range(
             source_type: "task_sync".to_string(),
             source_id: Some(task_id),
             category: None,
+            calendar_id: None,
             exdates: None,
             created_at: time.clone(),
             updated_at: time,
@@ -349,7 +358,7 @@ fn expand_daily(
         Err(_) => return Vec::new(),
     };
 
-    let until_dt = rules.get("UNTIL").and_then(|u| chrono::DateTime::parse_from_rfc3339(u).ok());
+    let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
 
     let mut instances = Vec::new();
@@ -404,20 +413,24 @@ fn expand_weekly(
     range_end: &str,
     exdates: &[String],
 ) -> Vec<Schedule> {
+    let base_start = match chrono::DateTime::parse_from_rfc3339(&base.start_at) {
+        Ok(dt) => dt,
+        Err(_) => return Vec::new(),
+    };
+
+    // BYDAY 未指定时，从 DTSTART 推导星期几（RFC 5545 默认行为）
     let byday_str = match rules.get("BYDAY") {
         Some(s) => s.clone(),
-        None => return Vec::new(),
+        None => {
+            let weekday_names = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+            weekday_names[base_start.weekday().num_days_from_sunday() as usize].to_string()
+        }
     };
 
     let bydays: Vec<&str> = byday_str.split(',').collect();
     let day_offsets: std::collections::HashMap<&str, i64> = [
         ("MO", 0), ("TU", 1), ("WE", 2), ("TH", 3), ("FR", 4), ("SA", 5), ("SU", 6),
     ].into_iter().collect();
-
-    let base_start = match chrono::DateTime::parse_from_rfc3339(&base.start_at) {
-        Ok(dt) => dt,
-        Err(_) => return Vec::new(),
-    };
 
     let range_start_dt = match chrono::DateTime::parse_from_rfc3339(range_start) {
         Ok(dt) => dt,
@@ -430,9 +443,7 @@ fn expand_weekly(
     };
 
     // UNTIL 限制
-    let until_dt = rules.get("UNTIL").and_then(|u| {
-        chrono::DateTime::parse_from_rfc3339(u).ok()
-    });
+    let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
 
     // COUNT 限制
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
@@ -538,7 +549,7 @@ fn expand_monthly(
         Err(_) => return Vec::new(),
     };
 
-    let until_dt = rules.get("UNTIL").and_then(|u| chrono::DateTime::parse_from_rfc3339(u).ok());
+    let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
 
     let mut instances = Vec::new();
@@ -620,27 +631,32 @@ where
 {
     let date_str = instance_start.format("%Y-%m-%d").to_string();
 
-    let instance_end_at = if let Some(ref end) = base.end_at {
-        if let Ok(base_end) = chrono::DateTime::parse_from_rfc3339(end) {
-            if let Ok(base_start) = chrono::DateTime::parse_from_rfc3339(&base.start_at) {
-                let duration = base_end.signed_duration_since(base_start);
-                let inst_end = instance_start.clone() + duration;
-                Some(inst_end.to_rfc3339())
-            } else {
-                None
-            }
-        } else {
-            None
+    // 将 instance_start 的日期与 base.start_at 的时间合并，保留原始时段
+    let base_start = chrono::DateTime::parse_from_rfc3339(&base.start_at);
+    let (start_at_str, instance_end_at) = match base_start {
+        Ok(bs) => {
+            let date = instance_start.naive_utc().date();
+            let time = bs.time();
+            let combined_naive = date.and_time(time);
+            let combined_start = chrono::Utc.from_utc_datetime(&combined_naive);
+
+            let end_at = base.end_at.as_ref().and_then(|end| {
+                chrono::DateTime::parse_from_rfc3339(end).ok().map(|be| {
+                    let duration = be.signed_duration_since(bs);
+                    (combined_start + duration).to_rfc3339()
+                })
+            });
+
+            (combined_start.to_rfc3339(), end_at)
         }
-    } else {
-        None
+        Err(_) => (instance_start.to_rfc3339(), None),
     };
 
     Schedule {
         id: format!("{}_{}", base.id, date_str),
         title: base.title.clone(),
         description: base.description.clone(),
-        start_at: instance_start.to_rfc3339(),
+        start_at: start_at_str,
         end_at: instance_end_at,
         rrule: None,
         reminder: base.reminder.clone(),
@@ -650,6 +666,7 @@ where
         source_type: base.source_type.clone(),
         source_id: base.source_id.clone(),
         category: base.category.clone(),
+        calendar_id: base.calendar_id.clone(),
         exdates: None,
         created_at: base.created_at.clone(),
         updated_at: base.updated_at.clone(),
@@ -666,4 +683,19 @@ fn parse_rrule(rrule: &str) -> std::collections::HashMap<String, String> {
         }
     }
     map
+}
+
+/// 解析 iCal 日期时间（兼容 RFC 3339 和 ICS 紧凑格式 YYYYMMDDTHHMMSSZ）
+fn parse_until_datetime(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt);
+    }
+    // ICS UNTIL 紧凑格式: 20260308T160000Z
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%SZ") {
+        return Some(chrono::Utc.from_utc_datetime(&ndt).fixed_offset());
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S") {
+        return Some(chrono::Utc.from_utc_datetime(&ndt).fixed_offset());
+    }
+    None
 }

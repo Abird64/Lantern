@@ -20,8 +20,6 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
   // 获取当月第一天
   const firstDay = new Date(year, month, 1);
   // 获取当月最后一天
-  const lastDay = new Date(year, month + 1, 0);
-
   // 第一天是周几（0=周一，6=周日）
   const firstWeekday = (firstDay.getDay() + 6) % 7;
 

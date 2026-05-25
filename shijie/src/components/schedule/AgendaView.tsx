@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePageTheme } from '@/hooks/usePageTheme';
+import { useCalendarStore } from '@/stores/calendarStore';
 import type { Schedule } from '@/types/schedule';
 
 
@@ -12,6 +13,7 @@ const weekDayNames = ['周日', '周一', '周二', '周三', '周四', '周五'
 
 export function AgendaView({ schedules, onEventClick }: AgendaViewProps) {
   const t = usePageTheme('schedule');
+  const { getCalendarById } = useCalendarStore();
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
   // 按日期分组
   const groupedByDay = new Map<string, Schedule[]>();
@@ -109,11 +111,14 @@ export function AgendaView({ schedules, onEventClick }: AgendaViewProps) {
                         <span className="text-sm truncate" style={{ color: isTaskSync ? `${t.cardText}99` : t.cardText }}>
                           {event.title}
                         </span>
-                        {event.category && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: `${t.cardText}80`, backgroundColor: `${t.accent}1A` }}>
-                            {event.category}
-                          </span>
-                        )}
+                        {event.calendar_id && (() => {
+                          const cal = getCalendarById(event.calendar_id);
+                          return cal ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: `${t.cardText}80`, backgroundColor: `${t.accent}1A` }}>
+                              {cal.name}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       {event.end_at && (
                         <span className="text-xs" style={{ color: `${t.cardText}66` }}>

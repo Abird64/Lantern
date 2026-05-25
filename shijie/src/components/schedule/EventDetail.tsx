@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePageTheme } from '@/hooks/usePageTheme';
+import { useCalendarStore } from '@/stores/calendarStore';
 import type { Schedule, UpdateScheduleInput } from '@/types/schedule';
 
 interface EventDetailProps {
@@ -45,21 +46,15 @@ type EditScope = 'this' | 'all';
 
 export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDeleteInstance, onClose }: EventDetailProps) {
   const t = usePageTheme('schedule');
+  const { calendars, getCalendarById } = useCalendarStore();
   const inputBg = t.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)';
   const surfaceBg = t.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
   const surfaceHover = t.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.07)';
-  const categories = [
-    { id: '课表', color: '#3A8FB7' },
-    { id: '学习', color: '#4A90D9' },
-    { id: '娱乐', color: '#D4A843' },
-    { id: '工作', color: t.accent },
-    { id: '生活', color: '#D98B58' },
-  ];
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(event.title);
   const [startAt, setStartAt] = useState(toLocalDatetime(event.start_at));
   const [endAt, setEndAt] = useState(event.end_at ? toLocalDatetime(event.end_at) : '');
-  const [category, setCategory] = useState(event.category || '生活');
+  const [calendarId, setCalendarId] = useState<string | null>(event.calendar_id ?? null);
   const [location, setLocation] = useState(event.location || '');
   const [description, setDescription] = useState(event.description || '');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -69,6 +64,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
 
   const isTaskSync = event.source_type === 'task_sync';
   const bgColor = event.color || t.accent;
+  const eventCalendar = getCalendarById(event.calendar_id ?? null);
 
   // 判断是否为重复事件实例
   const recurringInfo = parseRecurringInstanceId(event.id);
@@ -79,7 +75,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
       title: title.trim(),
       start_at: new Date(startAt).toISOString(),
       end_at: endAt ? new Date(endAt).toISOString() : undefined,
-      category,
+      calendar_id: calendarId ?? undefined,
       location: location.trim() || undefined,
       description: description.trim() || undefined,
     };
@@ -167,7 +163,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               style={{ backgroundColor: bgColor }}
             />
             <span className="text-xs" style={{ color: `${t.cardText}80` }}>
-              {isTaskSync ? '任务同步' : event.category || '日程'}
+              {isTaskSync ? '任务同步' : eventCalendar?.name || '日程'}
             </span>
             {isRecurringInstance && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: `${t.cardText}99`, backgroundColor: `${t.accent}4D` }}>
@@ -233,30 +229,26 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               </div>
             </div>
 
-            {/* 分类 */}
+            {/* 日历 */}
             <div>
-              <label className="text-xs mb-2 block" style={{ color: `${t.cardText}80` }}>分类</label>
-              <div className="flex gap-2 flex-wrap">
-                {categories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setCategory(cat.id)}
-                    className={`px-3 py-1 rounded-full text-xs transition-all ${
-                      category === cat.id
-                        ? 'text-white shadow-md'
-                        : ''
-                    }`}
-                    style={category === cat.id
-                      ? { backgroundColor: cat.color }
-                      : { color: `${t.cardText}B2`, backgroundColor: surfaceBg }}
-                    onMouseEnter={category !== cat.id ? (e) => (e.currentTarget.style.backgroundColor = surfaceHover) : undefined}
-                    onMouseLeave={category !== cat.id ? (e) => (e.currentTarget.style.backgroundColor = surfaceBg) : undefined}
-                  >
-                    {cat.id}
-                  </button>
+              <label className="text-xs mb-2 block" style={{ color: `${t.cardText}80` }}>日历</label>
+              <select
+                value={calendarId ?? ''}
+                onChange={(e) => setCalendarId(e.target.value || null)}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                style={{
+                  backgroundColor: inputBg,
+                  border: `1px solid ${t.accent}4D`,
+                  color: t.cardText,
+                }}
+              >
+                <option value="">无分类</option>
+                {calendars.map((cal) => (
+                  <option key={cal.id} value={cal.id} style={{ backgroundColor: t.card, color: t.cardText }}>
+                    {cal.name}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             {/* 地点 */}

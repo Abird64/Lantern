@@ -43,21 +43,26 @@ export async function addExdate(id: string, date: string): Promise<Schedule> {
 }
 
 /** 批量导入 .ics 事件 */
-export async function importIcsEvents(events: Array<{
-  uid: string;
-  title: string;
-  description?: string;
-  start_at: string;
-  end_at?: string;
-  rrule?: string;
-  location?: string;
-  category?: string;
-  exdates?: string;
-}>): Promise<{ success: boolean; imported: number; skipped: number; total: number }> {
-  return tauriInvoke('import_ics_events', { events });
+export async function importIcsEvents(
+  events: Array<{
+    uid: string;
+    title: string;
+    description?: string;
+    start_at: string;
+    end_at?: string;
+    rrule?: string;
+    location?: string;
+    category?: string;
+    exdates?: string;
+  }>,
+  calendarId?: string,
+): Promise<{ success: boolean; imported: number; skipped: number; total: number }> {
+  return tauriInvoke('import_ics_events', {
+    input: { events, calendar_id: calendarId ?? null },
+  });
 }
 
-/** 导出日程为 ICS 文本，可选按分类筛选 */
-export async function exportIcsEvents(category?: string): Promise<string> {
-  return tauriInvoke<string>('export_ics_events', { category: category ?? null });
+/** 导出日程为 ICS 文本，可选按日历筛选 */
+export async function exportIcsEvents(calendarId?: string): Promise<string> {
+  return tauriInvoke<string>('export_ics_events', { calendar_id: calendarId ?? null });
 }

@@ -3,8 +3,9 @@ import { Card, ThemeCard, NavBar } from '@/components/ui';
 import { useWeightsStore, type Weights } from '@/stores/weightsStore';
 import { useSettingStore } from '@/stores/settingStore';
 import { useThemeStore } from '@/stores/themeStore';
+import { useCalendarStore } from '@/stores/calendarStore';
 import { ThemeEditor } from '@/components/settings/ThemeEditor';
-import type { PageTheme } from '@/styles/theme';
+import { themes, type PageTheme } from '@/styles/theme';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import { PageContainer } from '@/components/layout';
 import { BUILTIN_PROMPTS } from '@/utils/builtinPrompts';
@@ -76,6 +77,7 @@ export function SettingsPage() {
   const s = makeStyles(t);
   const weights = useWeightsStore();
   const settings = useSettingStore();
+  const { calendars, fetchCalendars } = useCalendarStore();
 
   // 自定义主题
   const [showThemeEditor, setShowThemeEditor] = useState(false);
@@ -83,7 +85,7 @@ export function SettingsPage() {
 
   // 导出对话框
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [exportCategory, setExportCategory] = useState('all');
+  const [exportCalendarId, setExportCalendarId] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   // 清除数据对话框
@@ -100,13 +102,13 @@ export function SettingsPage() {
 
   const handleExport = async () => {
     try {
-      const category = exportCategory === 'all' ? undefined : exportCategory;
-      const icsContent = await scheduleService.exportIcsEvents(category);
+      const calendarId = exportCalendarId ?? undefined;
+      const icsContent = await scheduleService.exportIcsEvents(calendarId);
       const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const catSuffix = category ? `_${category}` : '';
-      a.download = `schedule_export${catSuffix}_${new Date().toISOString().slice(0, 10)}.ics`;
+      const calSuffix = calendarId ? `_${calendars.find((c) => c.id === calendarId)?.name || calendarId}` : '';
+      a.download = `schedule_export${calSuffix}_${new Date().toISOString().slice(0, 10)}.ics`;
       a.href = url;
       a.click();
       URL.revokeObjectURL(url);
@@ -149,6 +151,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     settings.loadAll();
+    fetchCalendars();
   }, []);
 
   useEffect(() => {
@@ -593,10 +596,10 @@ export function SettingsPage() {
                   <span className="text-sm font-medium" style={{ color: s.text }}>导出日程</span>
                 </div>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs" style={{ color: s.textSub }}>分类：</span>
+                  <span className="text-xs" style={{ color: s.textSub }}>日历：</span>
                   <select
-                    value={exportCategory}
-                    onChange={(e) => setExportCategory(e.target.value)}
+                    value={exportCalendarId ?? ''}
+                    onChange={(e) => setExportCalendarId(e.target.value || null)}
                     className="px-3 py-1.5 rounded-lg text-sm outline-none"
                     style={{
                       backgroundColor: s.inputBg,
@@ -604,12 +607,12 @@ export function SettingsPage() {
                       color: s.text,
                     }}
                   >
-                    <option value="all" style={{ backgroundColor: t.card, color: t.cardText }}>全部日程</option>
-                    <option value="课表" style={{ backgroundColor: t.card, color: t.cardText }}>课表</option>
-                    <option value="学习" style={{ backgroundColor: t.card, color: t.cardText }}>学习</option>
-                    <option value="娱乐" style={{ backgroundColor: t.card, color: t.cardText }}>娱乐</option>
-                    <option value="工作" style={{ backgroundColor: t.card, color: t.cardText }}>工作</option>
-                    <option value="生活" style={{ backgroundColor: t.card, color: t.cardText }}>生活</option>
+                    <option value="" style={{ backgroundColor: t.card, color: t.cardText }}>全部日程</option>
+                    {calendars.map((cal) => (
+                      <option key={cal.id} value={cal.id} style={{ backgroundColor: t.card, color: t.cardText }}>
+                        {cal.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <button

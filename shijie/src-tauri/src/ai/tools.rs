@@ -53,9 +53,10 @@ pub fn get_tools() -> Vec<ToolDefinition> {
         delete_task_definition(),
         search_tasks_definition(),
         update_task_definition(),
-        // ── 日程 (4) ──
+        // ── 日程 (5) ──
         create_schedule_definition(),
         list_schedules_in_range_definition(),
+        list_calendars_definition(),
         update_schedule_definition(),
         delete_schedule_definition(),
         // ── 日记 (4) ──
@@ -85,6 +86,7 @@ pub fn is_query_tool(name: &str) -> bool {
             | "search_contacts"
             | "list_contacts"
             | "list_schedules_in_range"
+            | "list_calendars"
             | "get_journal_by_date"
             | "get_timeline"
             | "list_skills"
@@ -367,10 +369,9 @@ fn create_schedule_definition() -> ToolDefinition {
                         "type": "string",
                         "description": "地点"
                     },
-                    "category": {
+                    "calendar_id": {
                         "type": "string",
-                        "enum": ["课表", "学习", "娱乐", "生活", "工作"],
-                        "description": "分类：上课用'课表'，自习用'学习'，看剧/游戏用'娱乐'，日常杂事用'生活'，工作相关用'工作'"
+                        "description": "日历ID。不填则使用默认日历。可通过 list_calendars 工具查看可选日历"
                     },
                     "rrule": {
                         "type": "string",
@@ -406,6 +407,21 @@ fn list_schedules_in_range_definition() -> ToolDefinition {
                     }
                 }),
                 required: vec!["start_date".to_string(), "end_date".to_string()],
+            },
+        },
+    }
+}
+
+fn list_calendars_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "list_calendars".to_string(),
+            description: "查看所有可用的日历表（用户自定义的分类）。创建或修改日程时，需要指定 calendar_id 来分配日程到某个日历。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
             },
         },
     }
@@ -448,10 +464,9 @@ fn update_schedule_definition() -> ToolDefinition {
                         "type": "string",
                         "description": "新地点"
                     },
-                    "category": {
+                    "calendar_id": {
                         "type": "string",
-                        "enum": ["课表", "学习", "娱乐", "生活", "工作"],
-                        "description": "新分类"
+                        "description": "新的日历ID"
                     },
                     "is_all_day": {
                         "type": "boolean",

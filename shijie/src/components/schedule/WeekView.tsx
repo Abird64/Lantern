@@ -225,8 +225,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full h-[1px] left-0" style={{ backgroundColor: `${t.accent}33` }}
-              style={{ top: `${hourToPercent(hour)}%` }}
+              className="absolute w-full h-[1px] left-0" style={{ top: `${hourToPercent(hour)}%`, backgroundColor: `${t.accent}33` }}
             />
           ))}
 
@@ -234,8 +233,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {Array.from({ length: 6 }, (_, i) => (
             <div
               key={i}
-              className="absolute top-0 h-full w-[1px]" style={{ backgroundColor: `${t.accent}33` }}
-              style={{ left: `${((i + 1) / 7) * 100}%` }}
+              className="absolute top-0 h-full w-[1px]" style={{ left: `${((i + 1) / 7) * 100}%`, backgroundColor: `${t.accent}33` }}
             />
           ))}
 
@@ -246,11 +244,7 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
             return (
               <div
                 key={`today-${idx}`}
-                className="absolute top-0 h-full" style={{ backgroundColor: `${t.accent}0D` }}
-                style={{
-                  left: `${(idx / 7) * 100}%`,
-                  width: `${100 / 7}%`,
-                }}
+                className="absolute top-0 h-full" style={{ left: `${(idx / 7) * 100}%`, width: `${100 / 7}%`, backgroundColor: `${t.accent}0D` }}
               />
             );
           })}
@@ -286,6 +280,9 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
             return layouts.map(({ event, col, totalCols }) => {
               const colWidthPercent = (100 / 7) / totalCols;
               const colLeft = (dayIdx / 7) * 100 + col * colWidthPercent;
+              const gap = 1.2; // 卡片两侧留白，视觉居中
+              const cardLeft = colLeft + gap / 2;
+              const cardWidth = colWidthPercent - gap;
 
               // 计算 top 和 height（考虑夜间压缩）
               const startDate = new Date(event.start_at);
@@ -312,8 +309,8 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
                   event={event}
                   top={top}
                   height={clampedHeight}
-                  left={colLeft}
-                  width={colWidthPercent}
+                  left={cardLeft}
+                  width={cardWidth}
                   onClick={onEventClick}
                   onDragStart={handleDragStart}
                 />
@@ -327,7 +324,6 @@ export function WeekView({ weekStart, schedules, onEventClick, onSlotClick, onEv
           {/* 拖拽指示器 */}
           {draggingEvent && (
             <DragIndicator
-              event={draggingEvent}
               y={dragY}
               gridRef={gridRef}
               yToHour={yToHour}
@@ -362,18 +358,17 @@ function CurrentTimeLine() {
 
 /** 拖拽指示器 */
 function DragIndicator({
-  event,
   y,
   gridRef,
   yToHour,
   snapToGrid,
 }: {
-  event: Schedule;
   y: number;
-  gridRef: React.RefObject<HTMLDivElement>;
+  gridRef: React.RefObject<HTMLDivElement | null>;
   yToHour: (y: number) => number;
   snapToGrid: (hour: number) => number;
 }) {
+  const t = usePageTheme('schedule');
   if (!gridRef.current) return null;
 
   const hour = snapToGrid(yToHour(y));

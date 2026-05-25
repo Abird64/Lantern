@@ -7,28 +7,21 @@ interface ScheduleState {
   isLoading: boolean;
   error: string | null;
 
-  // 当前周的范围
   rangeStart: string;
   rangeEnd: string;
 
-  // 操作
   fetchSchedules: (rangeStart: string, rangeEnd: string) => Promise<void>;
   createSchedule: (input: CreateScheduleInput) => Promise<Schedule>;
   updateSchedule: (id: string, input: UpdateScheduleInput) => Promise<Schedule>;
   deleteSchedule: (id: string) => Promise<void>;
-
-  // 筛选
-  filter: string;
-  setFilter: (filter: string) => void;
 }
 
-export const useScheduleStore = create<ScheduleState>((set, get) => ({
+export const useScheduleStore = create<ScheduleState>((set, _get) => ({
   schedules: [],
   isLoading: false,
   error: null,
   rangeStart: '',
   rangeEnd: '',
-  filter: 'all',
 
   fetchSchedules: async (rangeStart, rangeEnd) => {
     set({ isLoading: true, error: null, rangeStart, rangeEnd });
@@ -87,6 +80,4 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set({ error: String(e), isLoading: false });
     }
   },
-
-  setFilter: (filter) => set({ filter }),
 }));
