@@ -26,10 +26,10 @@ function build(label, args) {
   });
   // Find the built .exe
   const candidates = [
-    "拾阶_0.1.0_x64-setup.exe",
-    "MyWorld_0.1.0_x64-setup.exe",
-    "myworld_0.1.0_x64-setup.exe",
-    "拾阶_0.1.0_x64_en-US.msi",
+    "拾阶_0.2.0_x64-setup.exe",
+    "MyWorld_0.2.0_x64-setup.exe",
+    "myworld_0.2.0_x64-setup.exe",
+    "拾阶_0.2.0_x64_en-US.msi",
   ];
   let found = null;
   for (const name of candidates) {
@@ -52,7 +52,7 @@ function build(label, args) {
   }
   if (found) {
     const ext = found.split(".").pop();
-    const dest = join(outDir, `MyWorld_0.1.0_${label}.${ext}`);
+    const dest = join(outDir, `MyWorld_0.2.0_${label}.${ext}`);
     copyFileSync(found, dest);
     console.log(`\n→ ${dest}`);
   } else {
