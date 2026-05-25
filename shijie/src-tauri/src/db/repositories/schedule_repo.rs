@@ -569,7 +569,8 @@ fn expand_monthly(
         let instance_start = instance_date
             .and_time(base_start.time())
             .and_local_timezone(chrono::Local)
-            .unwrap();
+            .earliest()
+            .unwrap_or_else(|| chrono::Local::now());
 
         // 超出范围则停止
         if instance_start >= range_end_dt {

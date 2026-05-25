@@ -1478,11 +1478,10 @@ fn try_parse_weekday(expr: &str, today: NaiveDate) -> Option<Result<(String, Str
         expr.strip_prefix(prefix).unwrap_or(expr)
     };
 
-    let target_wd = WEEKDAY_NAMES.iter().find(|(name, _)| day_part == *name);
-    if target_wd.is_none() {
+    let Some(target_wd) = WEEKDAY_NAMES.iter().find(|(name, _)| day_part == *name) else {
         return None;
-    }
-    let target_wd = target_wd.unwrap().1;
+    };
+    let target_wd = target_wd.1;
 
     let date = if offset_weeks == -999 {
         // 没有前缀：找最近的那个星期几（今天或未来）

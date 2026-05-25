@@ -389,7 +389,9 @@ pub async fn modify_tool_calls(
                 msgs.iter().rev().find(|m| m.role == "assistant" && m.tool_calls.is_some())
             {
                 // 检查该消息之后是否有 tool 消息（即是否已被执行/取消）
-                let last_idx = msgs.iter().position(|m| m.id == last_assistant.id).unwrap();
+                let Some(last_idx) = msgs.iter().position(|m| m.id == last_assistant.id) else {
+                    return Err("找不到 assistant 消息位置".to_string());
+                };
                 let has_tool_after = msgs[last_idx + 1..].iter().any(|m| m.role == "tool");
                 if !has_tool_after {
                     let tool_calls: Vec<tools::ToolCall> =
