@@ -8,11 +8,13 @@ export async function addFavorite(
   content: string,
   role: string,
   conversationTitle?: string,
+  messageId?: string,
 ): Promise<AiFavorite> {
   return tauriInvoke<AiFavorite>('add_favorite', {
     content,
     role,
     conversationTitle,
+    messageId,
   });
 }
 
@@ -22,6 +24,10 @@ export async function listFavorites(): Promise<AiFavorite[]> {
 
 export async function deleteFavorite(id: string): Promise<void> {
   return tauriInvoke<void>('delete_favorite', { id });
+}
+
+export async function deleteFavoriteByMessageId(messageId: string): Promise<void> {
+  return tauriInvoke<void>('delete_favorite_by_message_id', { messageId });
 }
 
 export async function deleteAllFavorites(): Promise<void> {

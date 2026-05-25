@@ -352,6 +352,20 @@ TaskCard `h-[130px]` + Relations 联系人卡片 `h-[110px]`，`overflow-hidden`
 - 收藏盒面板：列表展示，显示来源对话、角色标签、时间戳，hover 显示删除按钮
 - 设置页清除数据新增"收藏夹"选项
 
+### 收藏夹交互重做
+
+鹏子指出初版问题：星标无反馈、不能收藏整段对话、不支持 Markdown、不能展开看详情。
+
+**改造内容：**
+- **星标 toggle**：新增 `message_id` 字段用于去重。点击星标 → 实心金黄，再点 → 空心取消。`favoriteStore` 维护 `favoritedIds` Set 判断状态
+- **对话收藏**：侧栏每条对话 hover 显示星标，点击后拉取全部消息，格式化为 `**你/提灯**：content` 的 Markdown，存入 `role='conversation'` 的收藏
+- **收藏盒替代对话区**：点"收藏盒" → 右侧聊天区切换为收藏列表；点某条收藏 → 进入详情视图，完整 Markdown 渲染；左上角箭头返回列表，X 关闭回对话
+- **Markdown 渲染**：单条消息和整段对话收藏均用 `react-markdown` 渲染
+
+**后端补充：**
+- `ai_favorites` 表加 `message_id` 列 + ALTER TABLE 补丁
+- 新增 `delete_favorite_by_message_id` 命令
+
 \---
 
 ## 待续

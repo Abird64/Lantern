@@ -75,6 +75,7 @@ pub fn run() {
             commands::favorite_commands::add_favorite,
             commands::favorite_commands::list_favorites,
             commands::favorite_commands::delete_favorite,
+            commands::favorite_commands::delete_favorite_by_message_id,
             commands::favorite_commands::delete_all_favorites,
         ])
         .run(tauri::generate_context!())

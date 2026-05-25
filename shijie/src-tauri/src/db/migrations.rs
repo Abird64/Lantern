@@ -302,8 +302,14 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
             content             TEXT NOT NULL,
             role                TEXT NOT NULL DEFAULT 'assistant',
             conversation_title  TEXT,
+            message_id          TEXT,
             created_at          TEXT NOT NULL
         )",
+        [],
+    );
+    // 为已有数据库补加 message_id 列
+    let _ = conn.execute(
+        "ALTER TABLE ai_favorites ADD COLUMN message_id TEXT",
         [],
     );
 
