@@ -295,6 +295,18 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         }
     }
 
+    // 增量迁移：AI 对话收藏夹
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS ai_favorites (
+            id                  TEXT PRIMARY KEY,
+            content             TEXT NOT NULL,
+            role                TEXT NOT NULL DEFAULT 'assistant',
+            conversation_title  TEXT,
+            created_at          TEXT NOT NULL
+        )",
+        [],
+    );
+
     log::info!("Database migrations completed");
     Ok(())
 }

@@ -72,6 +72,10 @@ pub fn run() {
             commands::ai_commands::finalize_tool_calls,
             commands::ai_commands::cancel_tool_calls,
             commands::ai_commands::modify_tool_calls,
+            commands::favorite_commands::add_favorite,
+            commands::favorite_commands::list_favorites,
+            commands::favorite_commands::delete_favorite,
+            commands::favorite_commands::delete_all_favorites,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

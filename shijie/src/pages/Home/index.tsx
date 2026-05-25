@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Trash2, MessageSquare, Copy, StopCircle, Check } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Copy, StopCircle, Check, Star, Bookmark } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PageContainer, GridBackground } from '@/components/layout';
 import { LanternSvg, NavBar } from '@/components/ui';
 import { ToolCallCard } from '@/components/ai/ToolCallCard';
 import { useAiStore } from '@/stores/aiStore';
+import { useFavoriteStore } from '@/stores/favoriteStore';
 import { parseToolCalls } from '@/utils/aiParsers';
 import { usePageTheme } from '@/hooks/usePageTheme';
 
@@ -29,6 +30,7 @@ export function HomePage() {
   const t = usePageTheme('lantern');
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -56,8 +58,16 @@ export function HomePage() {
     clearError,
   } = useAiStore();
 
+  const {
+    favorites,
+    fetchFavorites,
+    addFavorite,
+    deleteFavorite,
+  } = useFavoriteStore();
+
   useEffect(() => {
     fetchConversations();
+    fetchFavorites();
   }, []);
 
   useEffect(() => {
@@ -109,7 +119,7 @@ export function HomePage() {
         {/* 左侧 - 对话列表 */}
         {sidebarOpen && (
           <div className="w-[240px] flex-shrink-0 border-r flex flex-col" style={{ borderColor: s(0.1) }}>
-            <div className="p-3">
+            <div className="p-3 space-y-2">
               <button
                 onClick={handleNewConversation}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm transition-colors"
@@ -119,6 +129,19 @@ export function HomePage() {
               >
                 <Plus size={16} />
                 新对话
+              </button>
+              <button
+                onClick={() => {
+                  setFavoritesOpen(true);
+                  fetchFavorites();
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm transition-colors"
+                style={{ backgroundColor: s(0.05), color: s(0.6) }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = s(0.1); e.currentTarget.style.color = s(0.8); }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = s(0.05); e.currentTarget.style.color = s(0.6); }}
+              >
+                <Bookmark size={16} />
+                收藏盒
               </button>
             </div>
 
@@ -158,6 +181,86 @@ export function HomePage() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* 右侧 - 收藏盒（从右滑入） */}
+        {favoritesOpen && (
+          <>
+            {/* 遮罩 */}
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => setFavoritesOpen(false)}
+            />
+            <div
+              className="w-[320px] flex-shrink-0 border-l flex flex-col relative z-30"
+              style={{ borderColor: s(0.1), backgroundColor: t.bg }}
+            >
+              <div className="p-4 border-b flex items-center justify-between flex-shrink-0" style={{ borderColor: s(0.1) }}>
+                <h3 className="text-sm font-medium" style={{ color: s(0.8) }}>收藏盒</h3>
+                <button
+                  onClick={() => setFavoritesOpen(false)}
+                  className="w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                  style={{ color: s(0.4) }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = s(0.08); e.currentTarget.style.color = s(0.7); }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = s(0.4); }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {favorites.length === 0 ? (
+                  <div className="text-center py-12" style={{ color: s(0.3) }}>
+                    <Bookmark size={32} className="mx-auto mb-3 opacity-40" />
+                    <p className="text-sm">还没有收藏</p>
+                    <p className="text-xs mt-1" style={{ color: s(0.2) }}>hover 任意消息点击星标即可收藏</p>
+                  </div>
+                ) : (
+                  favorites.map((fav) => (
+                    <div
+                      key={fav.id}
+                      className="group rounded-xl p-3 transition-colors"
+                      style={{ backgroundColor: s(0.04) }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          {fav.conversation_title && (
+                            <div className="text-xs mb-1 truncate" style={{ color: s(0.3) }}>
+                              {fav.conversation_title}
+                            </div>
+                          )}
+                          <div className="text-sm leading-relaxed line-clamp-4" style={{ color: s(0.7) }}>
+                            {fav.content.slice(0, 200)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteFavorite(fav.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded flex-shrink-0 transition-opacity"
+                          style={{ color: s(0.3) }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = '#C83C3C'; e.currentTarget.style.backgroundColor = s(0.08); }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = s(0.3); e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          title="删除"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded-full"
+                          style={{ backgroundColor: fav.role === 'user' ? `${t.accent}25` : s(0.08), color: fav.role === 'user' ? t.accent : s(0.35) }}
+                        >
+                          {fav.role === 'user' ? '你' : '提灯'}
+                        </span>
+                        <span className="text-[10px]" style={{ color: s(0.2) }}>
+                          {new Date(fav.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {/* 中间 - 对话区 */}
@@ -236,6 +339,25 @@ export function HomePage() {
                                 ) : (
                                   <Copy size={12} />
                                 )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const title = conversations.find((c) => c.id === currentConversation)?.title;
+                                  addFavorite(msg.content || '', msg.role, title);
+                                }}
+                                className="flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                                style={{ color: s(0.25) }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.color = '#E8B959';
+                                  e.currentTarget.style.backgroundColor = s(0.08);
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.color = s(0.25);
+                                  e.currentTarget.style.backgroundColor = 'transparent';
+                                }}
+                                title="收藏"
+                              >
+                                <Star size={12} />
                               </button>
                             </div>
                           )}

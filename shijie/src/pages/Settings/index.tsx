@@ -143,6 +143,7 @@ export function SettingsPage() {
     { id: 'ai_diary', label: 'AI日省', description: 'AI 生成的日省反思和尘笺' },
     { id: 'skills', label: '技能', description: '所有属性和经验记录' },
     { id: 'ai_conversations', label: 'AI对话', description: '所有提灯对话历史' },
+    { id: 'ai_favorites', label: '收藏夹', description: '所有收藏的AI对话内容' },
     { id: 'settings', label: '设置', description: '所有自定义设置和配置' },
   ];
 

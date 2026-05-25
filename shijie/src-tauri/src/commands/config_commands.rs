@@ -87,6 +87,11 @@ pub fn clear_data(
                 .map_err(|e| e.to_string())?;
                 cleared.push("AI对话");
             }
+            "ai_favorites" => {
+                conn.execute("DELETE FROM ai_favorites", [])
+                    .map_err(|e| e.to_string())?;
+                cleared.push("收藏夹");
+            }
             "settings" => {
                 conn.execute("DELETE FROM settings", [])
                     .map_err(|e| e.to_string())?;

@@ -1,5 +1,6 @@
 pub mod ai_repo;
 pub mod contact_repo;
+pub mod favorite_repo;
 pub mod journal_repo;
 pub mod schedule_repo;
 pub mod setting_repo;

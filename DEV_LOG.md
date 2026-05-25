@@ -335,6 +335,23 @@ TaskCard `h-[130px]` + Relations 联系人卡片 `h-[110px]`，`overflow-hidden`
 
 提交了当前工作（主题系统+AI组件+农历+自动保存，35 files, +2237/-146），然后更新文档。接下来做 AI 对话收藏夹。
 
+### 收藏夹实现
+
+一气呵成做完了 AI 对话收藏夹。设计原则：收藏内容独立复制存储，不与原对话关联（清除聊天记录不影响收藏）。
+
+**后端（Rust）：**
+- `ai_favorites` 表（id, content, role, conversation_title, created_at）
+- `favorite_repo.rs`：add / list / delete / delete_all 四个操作
+- `favorite_commands.rs`：4 个 Tauri 命令
+- `clear_data` 新增 `ai_favorites` 分支
+
+**前端：**
+- `types/favorite.ts` + `services/favoriteService.ts` + `stores/favoriteStore.ts`
+- 助手页左侧栏加"收藏盒"按钮（新对话下方），点击滑出右侧面板
+- 每条消息 hover 时显示星标按钮，点击收藏
+- 收藏盒面板：列表展示，显示来源对话、角色标签、时间戳，hover 显示删除按钮
+- 设置页清除数据新增"收藏夹"选项
+
 \---
 
 ## 待续
