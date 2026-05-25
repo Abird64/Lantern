@@ -89,9 +89,10 @@ Obsidian 的本地优先 + 离线数据理念
 |---|------|------|
 | 任务 | create_task / search_tasks / complete_task / delete_task / update_task | ✅ 5个全部实现 |
 | 日程 | create_schedule / list_schedules_in_range / update_schedule / delete_schedule | ✅ 4个全部实现 |
-| 日记 | get_journal_by_date / save_journal / get_timeline | ✅ 3个全部实现 |
+| 日记 | get_journal_by_date / save_journal / get_timeline / settle_diary | ✅ 4个全部实现 |
 | 人脉 | create_contact / list_contacts / search_contacts / update_contact / delete_contact | ✅ 5个全部实现 |
 | 技能 | list_skills / get_task_skills | ✅ 2个全部实现 |
+| 日期 | resolve_date | ✅ 日期解析（今天/明天/周几/偏移/月初月末） |
 | 记忆 | save_memory / list_memories / delete_memory | AI 记忆系统（独立功能，暂缓） |
 
 **操作确认卡片系统：**
@@ -425,15 +426,15 @@ src-tauri/src/
 
 ## 六、已知问题 & 待处理
 
-### 🔴 技术债（优先解决）
+### 🔴 技术债（仅剩1项）
 
 | # | 问题 | 严重度 | 说明 |
 |---|------|--------|------|
-| 1 | ~~**模糊搜索匹配不可靠**~~ | ✅ 已解决 | 分词加权搜索(search_tasks_scored) + 工具增加status/priority筛选 + 多匹配智能分支(唯一天选/模糊列表/过多提示) |
-| 2 | **工具错误处理粗糙** | 高 | 工具执行失败直接返回 Err → 前端红色 toast。用户点了确认却看到报错，信任感打折。理想路径：失败 → 返回原因给 AI → AI 用自然语言解释 + 给修正建议 → 用户再试 |
-| 3 | **提示词膨胀** | 中 | prompts.rs 已近百行，每加一组工具继续涨。token 消耗线性增长，AI 容易"走神"忽视中间段规则。需要定期做提示词瘦身（精简冗余规则 / 工具描述外置 / 分层加载） |
-| 4 | **AI 工具覆盖不全** | ✅ 已解决 | 2026-05-23 补齐15个工具，覆盖日程(4)/日记(3)/人脉(5)/技能(2)/update_task(1)，共19个工具 |
-| 5 | **日期时间解析不稳定** | 中 | LLM 对日期推理是弱项（"下周二"、"月底"、跨年边界），日程工具的复杂度远超任务。需要更结构化的日期提示 + 后端校验 + 歧义回传确认 |
+| 1 | ~~**模糊搜索匹配不可靠**~~ | ✅ 已解决 | 分词加权搜索(search_tasks_scored) + 工具增加status/priority筛选 + 多匹配智能分支 |
+| 2 | ~~**工具错误处理粗糙**~~ | ✅ 已解决 | 歧义不阻断 + API错误分类汉化(401/429/5xx/网络) + 跟进命令容错 |
+| 3 | **提示词膨胀** | 低 | prompts.rs 177行，不算紧急但需定期审视。规则密度上升时 AI 容易忽视中间段规则 |
+| 4 | ~~**AI 工具覆盖不全**~~ | ✅ 已解决 | 21个工具覆盖全部5模块 + resolve_date |
+| 5 | ~~**日期时间解析不稳定**~~ | ✅ 已解决 | `resolve_date` 工具完整实现（tool_executor.rs），覆盖今天/明天/周几/偏移/月初月末/ISO透传 |
 
 ### UI 问题
 
@@ -456,9 +457,9 @@ src-tauri/src/
 | ~~AI 工具层 + 确认卡片~~ | ✅ 完成 | 4工具 + tool_executor + 4色卡片（含修改按钮） |
 | AI 自动标题 | ✅ 完成 | 首轮对话后自动生成10字内标题 |
 | AI 修改卡片 | ✅ 完成 | "修改"按钮 → 输入反馈 → AI 重新生成 tool_calls |
-| AI 更多工具 | ✅ 完成 | 19个工具覆盖5模块：任务5+日程4+日记3+人脉5+技能2 |
+| AI 更多工具 | ✅ 完成 | 21个工具覆盖5模块：任务5+日程4+日记4+人脉5+技能2+日期1 |
 | ~~农历日期注入~~ | ✅ 完成 | lunardate crate，系统提示词含农历日期（支持闰月） |
-| AI 对话收藏夹 | 下一步 | 收藏AI回复/对话，独立存储，清除聊天不影响收藏 |
+| AI 对话收藏夹 | 🔥 进行中 | 收藏AI回复/对话，独立存储，清除聊天不影响收藏 |
 | AI 记忆系统 | 下一步 | save_memory / list_memories，设置页管理 |
 | AI XP 分配提示词 | 记忆之后 | AI 根据日记内容判断给哪些属性加多少 XP |
 | 主题系统 | 远期 | 预设主题 + 自定义配色 + 多彩主题 |
@@ -507,4 +508,4 @@ src-tauri/src/
 
 ---
 
-*最后更新: 2026-05-25*
+*最后更新: 2026-05-25（晚）*
