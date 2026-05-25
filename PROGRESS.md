@@ -87,12 +87,12 @@ Obsidian 的本地优先 + 离线数据理念
 
 | 组 | 工具 | 说明 |
 |---|------|------|
-| 任务 | create_task / search_tasks / complete_task / delete_task / ~~list_tasks~~ / ~~update_task~~ | 4个已实现，update_task 待做 |
-| 日程 | create_schedule / list_schedules_in_range / update_schedule / delete_schedule | 待实现 |
-| 日记 | get_journal_by_date / save_journal / get_timeline | 待实现 |
-| 人脉 | create_contact / list_contacts / search_contacts / update_contact / delete_contact | 待实现 |
-| 技能 | list_skills / get_task_skills | 只读，XP 由 complete_task 自动触发 |
-| 记忆 | save_memory / list_memories / delete_memory | AI 记忆系统 |
+| 任务 | create_task / search_tasks / complete_task / delete_task / update_task | ✅ 5个全部实现 |
+| 日程 | create_schedule / list_schedules_in_range / update_schedule / delete_schedule | ✅ 4个全部实现 |
+| 日记 | get_journal_by_date / save_journal / get_timeline | ✅ 3个全部实现 |
+| 人脉 | create_contact / list_contacts / search_contacts / update_contact / delete_contact | ✅ 5个全部实现 |
+| 技能 | list_skills / get_task_skills | ✅ 2个全部实现 |
+| 记忆 | save_memory / list_memories / delete_memory | AI 记忆系统（独立功能，暂缓） |
 
 **操作确认卡片系统：**
 
@@ -425,6 +425,16 @@ src-tauri/src/
 
 ## 六、已知问题 & 待处理
 
+### 🔴 技术债（优先解决）
+
+| # | 问题 | 严重度 | 说明 |
+|---|------|--------|------|
+| 1 | ~~**模糊搜索匹配不可靠**~~ | ✅ 已解决 | 分词加权搜索(search_tasks_scored) + 工具增加status/priority筛选 + 多匹配智能分支(唯一天选/模糊列表/过多提示) |
+| 2 | **工具错误处理粗糙** | 高 | 工具执行失败直接返回 Err → 前端红色 toast。用户点了确认却看到报错，信任感打折。理想路径：失败 → 返回原因给 AI → AI 用自然语言解释 + 给修正建议 → 用户再试 |
+| 3 | **提示词膨胀** | 中 | prompts.rs 已近百行，每加一组工具继续涨。token 消耗线性增长，AI 容易"走神"忽视中间段规则。需要定期做提示词瘦身（精简冗余规则 / 工具描述外置 / 分层加载） |
+| 4 | **AI 工具覆盖不全** | ✅ 已解决 | 2026-05-23 补齐15个工具，覆盖日程(4)/日记(3)/人脉(5)/技能(2)/update_task(1)，共19个工具 |
+| 5 | **日期时间解析不稳定** | 中 | LLM 对日期推理是弱项（"下周二"、"月底"、跨年边界），日程工具的复杂度远超任务。需要更结构化的日期提示 + 后端校验 + 歧义回传确认 |
+
 ### UI 问题
 
 | 问题 | 说明 |
@@ -442,11 +452,13 @@ src-tauri/src/
 | ~~日记 XP 结算~~ | ✅ 完成 | 日省按钮触发，6维各+1 XP |
 | ~~设置后端~~ | ✅ 完成 | setting_repo + config_commands + AI设置区块 |
 | ~~AI 基础对话~~ | ✅ 完成 | ai_repo + ai_client + 对话列表 + 消息气泡 + Markdown渲染 |
-| ~~AI 系统提示词~~ | ✅ 完成 | prompts.rs: 提灯角色 + 能力 + 规则 + 时间注入 + 性格 |
+| ~~AI 系统提示词~~ | ✅ 完成 | prompts.rs: 提灯角色 + 能力 + 规则 + 时间注入 + 农历 + 性格 |
 | ~~AI 工具层 + 确认卡片~~ | ✅ 完成 | 4工具 + tool_executor + 4色卡片（含修改按钮） |
 | AI 自动标题 | ✅ 完成 | 首轮对话后自动生成10字内标题 |
 | AI 修改卡片 | ✅ 完成 | "修改"按钮 → 输入反馈 → AI 重新生成 tool_calls |
-| AI 更多工具 | 下一步 | update_task / create_schedule / 日记/人脉 工具 |
+| AI 更多工具 | ✅ 完成 | 19个工具覆盖5模块：任务5+日程4+日记3+人脉5+技能2 |
+| ~~农历日期注入~~ | ✅ 完成 | lunardate crate，系统提示词含农历日期（支持闰月） |
+| AI 对话收藏夹 | 下一步 | 收藏AI回复/对话，独立存储，清除聊天不影响收藏 |
 | AI 记忆系统 | 下一步 | save_memory / list_memories，设置页管理 |
 | AI XP 分配提示词 | 记忆之后 | AI 根据日记内容判断给哪些属性加多少 XP |
 | 主题系统 | 远期 | 预设主题 + 自定义配色 + 多彩主题 |
@@ -480,4 +492,19 @@ src-tauri/src/
 
 ---
 
-*最后更新: 2026-05-22*
+## 八、UI 修复 & 体验优化（2026-05-25）
+
+| 项目 | 说明 |
+|------|------|
+| **主题色硬编码大扫除** | LanternModal / MascotModal / DropdownMenu / DateNavigator 等组件从 `t.isDark`（页面背景）改为 `cardIsDark`（卡片自身），修复墙角梅等浅卡片深背景主题的文字不可见问题 |
+| **自动保存** | TaskDetailPanel + Relations 编辑面板移除保存按钮，字段变更后 600-800ms debounce 自动保存 |
+| **农历日期入 AI 提示词** | 新增 lunardate crate，系统提示词注入当前农历日期 |
+| **卡片固定高度** | TaskCard h-[130px] + Relations 联系人卡片 h-[110px]，overflow-hidden |
+| **清除数据重做** | 日记/AI日省拆分、弹窗缩小可滚动、toast 静置正中无动画 |
+| **DeepSeek API 更新** | base URL → api.deepseek.com，模型 → deepseek-v4-flash |
+| **日记日期选择器** | TimelineDropdown 改为固定覆盖层，日记框不再跳动 |
+| **设置页清理** | 移除 AI 助手性格设置；任务权重描述去"熊猫"化 |
+
+---
+
+*最后更新: 2026-05-25*

@@ -79,7 +79,7 @@ export function DiaryPage() {
     <PageContainer className="relative" bgColor={t.bg}>
       <NavBar title="日记" navColor={t.nav} quote="人闲桂花落，夜景春山空" />
 
-      {/* 固定控制区：日期胶囊 + 时间线 */}
+      {/* 固定控制区：日期胶囊 */}
       <div className="flex-shrink-0 flex flex-col items-center pt-6 pb-3">
         {/* 日期胶囊 - 可点击打开时间线 */}
         <div className="flex justify-center px-8 w-full">
@@ -129,11 +129,17 @@ export function DiaryPage() {
             </div>
           </div>
         </div>
-
-        {/* 时间线下拉 */}
-        <div className="h-3" />
-        <TimelineDropdown />
       </div>
+
+      {/* 时间线日历覆盖层 */}
+      {showTimeline && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40" onClick={toggleTimeline} />
+          <div className="fixed top-28 left-1/2 -translate-x-1/2 z-50 w-full max-w-[1000px]">
+            <TimelineDropdown />
+          </div>
+        </>
+      )}
 
       {/* 日记正文 */}
       <div className="flex-1 flex justify-center items-center px-8 pb-20">

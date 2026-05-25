@@ -295,9 +295,9 @@ pub async fn daily_reflection(
         let schedules = schedule_repo::list_schedules_in_range(&conn, &input.date, &input.date)?;
 
         let config = client::AiConfig {
-            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com/v1"),
+            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com"),
             api_key: get_setting_or(&conn, "ai.api_key", ""),
-            model: get_setting_or(&conn, "ai.model", "deepseek-chat"),
+            model: get_setting_or(&conn, "ai.model", "deepseek-v4-flash"),
         };
 
         (diary_content, tasks, schedules, config)

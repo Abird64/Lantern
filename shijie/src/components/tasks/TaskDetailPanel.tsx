@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Check, Circle, Pencil, Trash2, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Check, Circle, Trash2, Plus } from 'lucide-react';
 import { SKILL_COLORS, SKILL_ORDER } from '@/components/ui';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import * as skillService from '@/services/skillService';
@@ -59,7 +59,6 @@ export function TaskDetailPanel({
   const [newTagInput, setNewTagInput] = useState('');
   const [skillXps, setSkillXps] = useState<Record<string, number>>({});
   const [subtaskTitle, setSubtaskTitle] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setTitle(task.title);
@@ -81,11 +80,19 @@ export function TaskDetailPanel({
     }).catch(() => {});
   }, [task]);
 
-  const handleSave = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await onSave(task.id, {
+  // 首次加载标记：task 切换时重置，等数据同步完再开启自动保存
+  const initialLoadRef = useRef(true);
+  useEffect(() => {
+    initialLoadRef.current = true;
+    const timer = setTimeout(() => { initialLoadRef.current = false; }, 300);
+    return () => clearTimeout(timer);
+  }, [task.id]);
+
+  // 自动保存：任何字段变更后 600ms 自动保存
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    const timer = setTimeout(() => {
+      onSave(task.id, {
         title: title.trim() || task.title,
         description: description.trim() || undefined,
         status: status !== task.status ? status : undefined,
@@ -97,10 +104,9 @@ export function TaskDetailPanel({
         tags: tags.length > 0 ? JSON.stringify(tags) : undefined,
         skillXps,
       });
-    } finally {
-      setSaving(false);
-    }
-  };
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [title, description, status, priority, deadline, scheduledAt, estimatedMinutes, notes, tags, skillXps]);
 
   const handleAddSubtask = async () => {
     if (!subtaskTitle.trim()) return;
@@ -362,24 +368,19 @@ export function TaskDetailPanel({
         </div>
 
         {/* 底部操作 */}
-        <div className="p-6 border-t space-y-3" style={{ borderColor }}>
-          <button onClick={handleSave} disabled={saving}
-            className="w-full py-3 rounded-2xl btn-accent text-white text-base font-medium transition-colors flex items-center justify-center gap-2"
-            style={{ backgroundColor: theme.accent }}>
-            <Pencil size={16} />
-            {saving ? '保存中...' : '保存修改'}
-          </button>
-
+        <div className="p-6 border-t" style={{ borderColor }}>
           <div className="flex gap-3">
             {task.status !== 'completed' ? (
               <button onClick={() => onComplete(task.id)}
-                className="flex-1 py-3 rounded-2xl bg-[#2A8CB7] text-white text-base hover:bg-[#237aa3] transition-colors flex items-center justify-center gap-2">
+                className="flex-1 py-3 rounded-2xl text-white text-base transition-colors flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#2A8CB7' }}>
                 <Check size={16} />
                 完成任务 +XP
               </button>
             ) : (
               <button onClick={() => onUncomplete(task.id)}
-                className="flex-1 py-3 rounded-2xl bg-[#F39C12] text-white text-base hover:bg-[#e08e10] transition-colors flex items-center justify-center gap-2">
+                className="flex-1 py-3 rounded-2xl text-white text-base transition-colors flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#F39C12' }}>
                 <Circle size={16} />
                 取消完成 -XP
               </button>

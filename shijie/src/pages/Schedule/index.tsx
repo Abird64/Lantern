@@ -11,7 +11,8 @@ import { EventDetail } from '@/components/schedule/EventDetail';
 import { useScheduleStore } from '@/stores/scheduleStore';
 import { parseIcs } from '@/utils/icsParser';
 import * as scheduleService from '@/services/scheduleService';
-import { startNotificationChecker, stopNotificationChecker } from '@/services/notificationService';
+import { startNotificationChecker, stopNotificationChecker, setNotificationEnabled } from '@/services/notificationService';
+import { useSettingStore } from '@/stores/settingStore';
 import { addExdate } from '@/services/scheduleService';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import { Plus } from 'lucide-react';
@@ -49,6 +50,7 @@ function formatWeekLabel(weekMonday: Date): string {
 
 export function SchedulePage() {
   const t = usePageTheme('schedule');
+  const getSetting = useSettingStore((s) => s.get);
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekMonday, setWeekMonday] = useState(() => getWeekMonday(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -84,17 +86,21 @@ export function SchedulePage() {
 
   // 启动通知检测
   useEffect(() => {
+    const notifyEnabled = getSetting('notification.task_reminder') === 'true';
+    setNotificationEnabled(notifyEnabled);
+
     startNotificationChecker(
       () => schedules,
       (event) => {
-        console.log('Reminder:', event.title);
+        // 浏览器通知由 sendNotification 处理，这里可以留给未来的 in-app toast
+        console.log(`[日程提醒] ${event.title}`);
       }
     );
 
     return () => {
       stopNotificationChecker();
     };
-  }, [schedules]);
+  }, [schedules, getSetting]);
 
   // 筛选（使用 store 中的 filter 状态）
   const filteredSchedules = filter === 'all'

@@ -44,7 +44,7 @@ export function TaskCard({
   return (
     <div>
       <div
-        className="backdrop-blur-sm rounded-[24px] p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative group"
+        className="backdrop-blur-sm rounded-[24px] p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative group h-[130px] overflow-hidden"
         style={{ backgroundColor: theme.card }}
         onClick={() => {
           if (multiSelectMode) {

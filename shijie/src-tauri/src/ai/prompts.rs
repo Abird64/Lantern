@@ -1,4 +1,5 @@
 use chrono::Local;
+use lunardate::LunarDate;
 
 /// 构建"提灯"的系统提示词
 ///
@@ -7,11 +8,33 @@ pub fn build_system_prompt(personality: &str) -> String {
     let now = Local::now();
     let datetime = now.format("现在时间：%Y年%m月%d日 %A %H:%M，时区 Asia/Shanghai (UTC+8)");
 
+    // 农历日期
+    const LUNAR_MONTHS: [&str; 12] = ["正月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "冬月", "腊月"];
+    const LUNAR_DAYS: [&str; 30] = [
+        "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+        "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+        "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十",
+    ];
+    let lunar_str = match LunarDate::from_naive_date(&now.date_naive()) {
+        Ok(l) => {
+            let m = l.month() as usize;
+            let d = l.day() as usize;
+            if m >= 1 && m <= 12 && d >= 1 && d <= 30 {
+                let leap = if l.is_leap_month() { "闰" } else { "" };
+                format!("农历{}{}{}", leap, LUNAR_MONTHS[m - 1], LUNAR_DAYS[d - 1])
+            } else {
+                "农历日期未知".to_string()
+            }
+        }
+        Err(_) => "农历日期未知".to_string(),
+    };
+
     let base = format!(
         r#"你是"提灯"，住在一款叫"拾阶"的桌面应用里陪伴用户管理人生。性格温和、靠谱、不啰嗦，像了解用户的朋友。中文为主，偶用英文点缀。
 
 ## 当前信息
 {datetime}
+农历：{lunar_str}
 
 ## 通用规则
 - 数据操作必须调用工具，绝不凭空编造。模糊意图先追问一句比做错好
@@ -36,7 +59,8 @@ pub fn build_system_prompt(personality: &str) -> String {
 - 搜索用空格分隔多关键词，"高等 数学 作业"优于"数学作业"
 - 多条匹配→把选项（带ID）列给用户选，再用id精确定位
 "#,
-        datetime = datetime
+        datetime = datetime,
+        lunar_str = lunar_str
     );
 
     let mut prompt = String::with_capacity(base.len() + personality.len() + 128);

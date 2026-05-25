@@ -268,7 +268,7 @@ export function RelationsPage() {
     setSelectedContact(null);
   }
 
-  async function handleSave() {
+  async function saveEdit() {
     if (!selectedContact || !editName.trim()) return;
     try {
       await updateContact(selectedContact.id, {
@@ -282,12 +282,27 @@ export function RelationsPage() {
         contact_methods: editContactMethods.length > 0 ? editContactMethods : undefined,
         notes: editNotes.trim() || undefined,
       });
-      showToast('已保存');
-      closeDetail();
     } catch (e) {
       showToast(String(e));
     }
   }
+
+  // 首次加载标记：打开详情时重置
+  const editInitRef = useRef(true);
+  useEffect(() => {
+    if (selectedContact) {
+      editInitRef.current = true;
+      const timer = setTimeout(() => { editInitRef.current = false; }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedContact?.id]);
+
+  // 自动保存：编辑字段变更后 800ms 自动保存
+  useEffect(() => {
+    if (editInitRef.current || !selectedContact) return;
+    const timer = setTimeout(() => saveEdit(), 800);
+    return () => clearTimeout(timer);
+  }, [editName, editNicknames, editGroupName, editBirthdayCalendar, editBirthdayYear, editBirthdayMonth, editBirthdayDay, editContactMethods, editNotes]);
 
   async function handleDelete() {
     if (!selectedContact) return;
@@ -348,7 +363,7 @@ export function RelationsPage() {
                 <div
                   key={contact.id}
                   onClick={() => openDetail(contact)}
-                  className="rounded-[24px] p-4 flex items-center gap-4 hover:opacity-90 transition-colors cursor-pointer"
+                  className="rounded-[24px] p-4 flex items-center gap-4 hover:opacity-90 transition-colors cursor-pointer h-[110px] overflow-hidden"
                   style={{ backgroundColor: theme.card }}
                 >
                   {/* 头像 */}
@@ -801,16 +816,15 @@ export function RelationsPage() {
                 删除
               </button>
               <button
-                onClick={handleSave}
-                disabled={!editName.trim()}
-                className="flex-1 py-3 rounded-full text-white transition-colors disabled:opacity-30"
-                style={{ backgroundColor: theme.accent }}
+                onClick={closeDetail}
+                className="flex-1 py-3 rounded-full transition-colors"
+                style={{ backgroundColor: theme.accent, color: '#fff' }}
               >
-                保存
+                完成
               </button>
             </div>
-          </div>
         </div>
+      </div>
       )}
 
       {/* Toast */}
@@ -843,23 +857,17 @@ export function RelationsPage() {
         .date-input::-webkit-calendar-picker-indicator {
           opacity: 0.4;
           cursor: pointer;
-          filter: grayscale(1);
+          filter: grayscale(1) brightness(${theme.isDark ? '2' : '1'});
         }
         .date-input::-webkit-calendar-picker-indicator:hover {
           opacity: 0.7;
         }
         select.custom-select {
-          -webkit-appearance: none;
-          appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 8px center;
-          padding-right: 28px;
           cursor: pointer;
         }
         select.custom-select option {
-          color: #1A1A1A;
-          background: #F5F1EB;
+          color: ${theme.cardText};
+          background: ${theme.card};
         }
       `}</style>
     </PageContainer>

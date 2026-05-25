@@ -12,11 +12,22 @@ const tabs = [
   { id: 'settings', label: '设置', icon: Settings },
 ];
 
+function isDarkColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+}
+
 export function DropdownMenu() {
   const { activeTab, setActiveTab, menuOpen, setMenuOpen } = useUIStore();
   const t = usePageTheme('lantern');
 
   if (!menuOpen) return null;
+
+  const bgIsDark = isDarkColor(t.bg);
+  const itemColor = bgIsDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)';
+  const hoverBg = bgIsDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
 
   return (
     <div className="fixed inset-0 z-50">
@@ -42,18 +53,19 @@ export function DropdownMenu() {
                   setActiveTab(tab.id);
                   setMenuOpen(false);
                 }}
-                className={`w-full h-12 rounded-xl flex items-center gap-3 px-4 transition-all ${
-                  isActive
-                    ? ''
-                    : 'hover:bg-white/10'
-                }`}
+                className="w-full h-12 rounded-xl flex items-center gap-3 px-4 transition-all"
                 style={isActive ? { backgroundColor: t.accent } : undefined}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.backgroundColor = hoverBg;
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
-                <Icon size={20} className={isActive ? 'text-white' : 'text-white/70'} />
+                <Icon size={20} style={{ color: isActive ? '#fff' : itemColor }} />
                 <span
-                  className={`font-zhuque text-xl ${
-                    isActive ? 'text-white' : 'text-white/70'
-                  }`}
+                  className="font-zhuque text-xl"
+                  style={{ color: isActive ? '#fff' : itemColor }}
                 >
                   {tab.label}
                 </span>

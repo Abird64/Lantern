@@ -99,9 +99,9 @@ pub async fn send_message(
 
         let tool_defs = tools::get_tools();
         let config = client::AiConfig {
-            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com/v1"),
+            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com"),
             api_key: get_setting_or(&conn, "ai.api_key", ""),
-            model: get_setting_or(&conn, "ai.model", "deepseek-chat"),
+            model: get_setting_or(&conn, "ai.model", "deepseek-v4-flash"),
         };
 
         (chat_messages, config, tool_defs)
@@ -273,9 +273,9 @@ fn build_chat_context(
     }
 
     let config = client::AiConfig {
-        api_url: get_setting_or(conn, "ai.api_url", "https://api.deepseek.com/v1"),
+        api_url: get_setting_or(conn, "ai.api_url", "https://api.deepseek.com"),
         api_key: get_setting_or(conn, "ai.api_key", ""),
-        model: get_setting_or(conn, "ai.model", "deepseek-chat"),
+        model: get_setting_or(conn, "ai.model", "deepseek-v4-flash"),
     };
 
     Ok((chat_messages, config))
@@ -425,9 +425,9 @@ pub async fn modify_tool_calls(
         let tool_defs = tools::get_tools();
 
         let config = client::AiConfig {
-            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com/v1"),
+            api_url: get_setting_or(&conn, "ai.api_url", "https://api.deepseek.com"),
             api_key: get_setting_or(&conn, "ai.api_key", ""),
-            model: get_setting_or(&conn, "ai.model", "deepseek-chat"),
+            model: get_setting_or(&conn, "ai.model", "deepseek-v4-flash"),
         };
 
         (chat_messages, config, tool_defs)

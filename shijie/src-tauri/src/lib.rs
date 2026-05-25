@@ -60,6 +60,7 @@ pub fn run() {
             commands::config_commands::set_setting,
             commands::config_commands::list_settings,
             commands::config_commands::delete_setting,
+            commands::config_commands::clear_data,
             commands::ai_commands::create_conversation,
             commands::ai_commands::list_conversations,
             commands::ai_commands::delete_conversation,

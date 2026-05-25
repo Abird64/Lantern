@@ -10,8 +10,9 @@ import { PageContainer } from '@/components/layout';
 import { BUILTIN_PROMPTS } from '@/utils/builtinPrompts';
 import { selectableThemes } from '@/styles/theme';
 import type { PromptTemplate } from '@/utils/builtinPrompts';
-import { Plus, Pencil, Trash2, X, Check, Lock, Palette, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, Lock, Palette, Download, AlertTriangle } from 'lucide-react';
 import * as scheduleService from '@/services/scheduleService';
+import { invoke } from '@tauri-apps/api/core';
 
 const weightLabels: Record<keyof Weights, string> = {
   urgency: '紧急度',
@@ -22,7 +23,7 @@ const weightLabels: Record<keyof Weights, string> = {
 const AI_PROVIDERS = [
   { id: 'openai', name: 'OpenAI', defaultUrl: 'https://api.openai.com/v1' },
   { id: 'anthropic', name: 'Anthropic', defaultUrl: 'https://api.anthropic.com' },
-  { id: 'deepseek', name: 'DeepSeek', defaultUrl: 'https://api.deepseek.com/v1' },
+  { id: 'deepseek', name: 'DeepSeek', defaultUrl: 'https://api.deepseek.com' },
   { id: 'ollama', name: 'Ollama', defaultUrl: 'http://localhost:11434' },
 ];
 
@@ -63,7 +64,7 @@ function makeStyles(t: typeof themes.settings): SettingsStyles {
     accentDim: t.accentLight,
     danger: DANGER,
     dangerDim: DANGER_DIM,
-    inputBg: cardIsDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    inputBg: cardIsDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     inputBorder: cardIsDark ? '#444' : '#CCC',
     overlay,
   };
@@ -84,6 +85,11 @@ export function SettingsPage() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportCategory, setExportCategory] = useState('all');
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+
+  // 清除数据对话框
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [clearCategories, setClearCategories] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // 自定义锦囊
   const [customPrompts, setCustomPrompts] = useState<PromptTemplate[]>([]);
@@ -111,6 +117,34 @@ export function SettingsPage() {
       setTimeout(() => setExportMessage(null), 4000);
     }
   };
+
+  const handleClear = async () => {
+    if (clearCategories.size === 0) return;
+    try {
+      const cats = Array.from(clearCategories);
+      const msg: string = await invoke('clear_data', { categories: cats });
+      setClearCategories(new Set());
+      setShowClearDialog(false);
+      settings.loadAll();
+      setToast({ message: msg, type: 'success' });
+      setTimeout(() => setToast(null), 2500);
+    } catch (err) {
+      setShowClearDialog(false);
+      setToast({ message: '清除失败：' + String(err), type: 'error' });
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const clearOptions = [
+    { id: 'tasks', label: '任务', description: '所有任务、子任务及关联数据' },
+    { id: 'schedules', label: '日程', description: '所有日程安排' },
+    { id: 'contacts', label: '人脉', description: '所有联系人及联系方式' },
+    { id: 'journals', label: '日记', description: '用户自己写的日记正文（.md 文件）' },
+    { id: 'ai_diary', label: 'AI日省', description: 'AI 生成的日省反思和尘笺' },
+    { id: 'skills', label: '技能', description: '所有属性和经验记录' },
+    { id: 'ai_conversations', label: 'AI对话', description: '所有提灯对话历史' },
+    { id: 'settings', label: '设置', description: '所有自定义设置和配置' },
+  ];
 
   useEffect(() => {
     settings.loadAll();
@@ -258,7 +292,7 @@ export function SettingsPage() {
           {/* ===== 任务推荐权重 ===== */}
           <Section title="任务推荐权重" styles={s}>
             <p className="text-sm mb-4" style={{ color: s.textSub }}>
-              点击左下角熊猫时，系统根据这三个维度加权评分推荐最优任务
+              系统根据这三个维度加权评分推荐最优任务
             </p>
             {(['urgency', 'value', 'cost'] as const).map((key) => (
               <SliderRow
@@ -283,11 +317,21 @@ export function SettingsPage() {
                   set('ai.provider', e.target.value);
                   if (p) set('ai.api_url', p.defaultUrl);
                 }}
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ backgroundColor: s.inputBg, border: `1px solid ${s.inputBorder}`, color: s.text }}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+                style={{
+                  backgroundColor: s.inputBg,
+                  border: `1px solid ${s.inputBorder}`,
+                  color: s.text,
+                }}
               >
                 {AI_PROVIDERS.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option
+                    key={p.id}
+                    value={p.id}
+                    style={{ backgroundColor: t.card, color: t.cardText }}
+                  >
+                    {p.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -296,7 +340,7 @@ export function SettingsPage() {
             <InputRow
               label="API 地址"
               value={get('ai.api_url')}
-              placeholder="https://api.deepseek.com/v1"
+              placeholder="https://api.deepseek.com"
               onChange={(v) => set('ai.api_url', v)}
               styles={s}
             />
@@ -314,23 +358,12 @@ export function SettingsPage() {
             {/* 模型名称 */}
             <InputRow
               label="模型名称"
-              value={get('ai.model', 'deepseek-chat')}
-              placeholder="deepseek-chat"
+              value={get('ai.model', 'deepseek-v4-flash')}
+              placeholder="deepseek-v4-flash"
               onChange={(v) => set('ai.model', v)}
               styles={s}
             />
 
-            {/* 助手性格 */}
-            <div>
-              <label className="text-sm mb-1.5 block" style={{ color: s.textSub }}>助手性格</label>
-              <textarea
-                value={get('ai.personality', '你是一个温暖的人生管理助手，名叫提灯。')}
-                onChange={(e) => set('ai.personality', e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                style={{ backgroundColor: s.inputBg, border: `1px solid ${s.inputBorder}`, color: s.text }}
-              />
-            </div>
           </Section>
 
           {/* ===== 锦囊管理 ===== */}
@@ -501,6 +534,7 @@ export function SettingsPage() {
               导出数据
             </button>
             <button
+              onClick={() => { setClearCategories(new Set()); setShowClearDialog(true); }}
               className="w-full py-3 px-4 rounded-xl text-lg transition-colors"
               style={{ backgroundColor: DANGER_DIM, color: DANGER }}
             >
@@ -569,12 +603,12 @@ export function SettingsPage() {
                       color: s.text,
                     }}
                   >
-                    <option value="all">全部日程</option>
-                    <option value="课表">课表</option>
-                    <option value="学习">学习</option>
-                    <option value="娱乐">娱乐</option>
-                    <option value="工作">工作</option>
-                    <option value="生活">生活</option>
+                    <option value="all" style={{ backgroundColor: t.card, color: t.cardText }}>全部日程</option>
+                    <option value="课表" style={{ backgroundColor: t.card, color: t.cardText }}>课表</option>
+                    <option value="学习" style={{ backgroundColor: t.card, color: t.cardText }}>学习</option>
+                    <option value="娱乐" style={{ backgroundColor: t.card, color: t.cardText }}>娱乐</option>
+                    <option value="工作" style={{ backgroundColor: t.card, color: t.cardText }}>工作</option>
+                    <option value="生活" style={{ backgroundColor: t.card, color: t.cardText }}>生活</option>
                   </select>
                 </div>
                 <button
@@ -632,6 +666,104 @@ export function SettingsPage() {
             >
               关闭
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 清除数据对话框 ===== */}
+      {showClearDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setShowClearDialog(false)}
+        >
+          <div
+            className="rounded-[24px] p-5 w-[380px] max-h-[85vh] flex flex-col shadow-2xl"
+            style={{ backgroundColor: t.card }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1 flex-shrink-0">
+              <AlertTriangle size={16} style={{ color: DANGER }} />
+              <h2 className="text-base font-medium tracking-wider" style={{ color: t.cardText }}>
+                清除数据
+              </h2>
+            </div>
+            <p className="text-xs mb-3 flex-shrink-0" style={{ color: s.textSub }}>
+              选择要清除的数据类型。此操作不可撤销，建议先导出备份。
+            </p>
+
+            <div className="space-y-1.5 mb-4 overflow-y-auto flex-1" style={{ maxHeight: 280 }}>
+              {clearOptions.map((opt) => {
+                const isSelected = clearCategories.has(opt.id);
+                return (
+                  <label
+                    key={opt.id}
+                    className="flex items-start gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-colors"
+                    style={{
+                      backgroundColor: isSelected ? DANGER_DIM : s.overlay(0.04),
+                      border: `1px solid ${isSelected ? DANGER : s.cardBorder}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        setClearCategories((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(opt.id)) next.delete(opt.id); else next.add(opt.id);
+                          return next;
+                        });
+                      }}
+                      className="mt-0.5 flex-shrink-0"
+                      style={{ accentColor: DANGER }}
+                    />
+                    <div>
+                      <div className="text-sm font-medium" style={{ color: isSelected ? DANGER : s.text }}>{opt.label}</div>
+                      <div className="text-xs mt-0.5" style={{ color: s.textSub }}>{opt.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowClearDialog(false)}
+                className="flex-1 py-2 rounded-full text-sm transition-colors"
+                style={{ color: s.textSub }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleClear}
+                disabled={clearCategories.size === 0}
+                className="flex-1 py-2 rounded-full text-sm font-medium transition-all disabled:opacity-30"
+                style={{
+                  backgroundColor: clearCategories.size > 0 ? DANGER : DANGER_DIM,
+                  color: clearCategories.size > 0 ? '#fff' : DANGER,
+                }}
+              >
+                {clearCategories.size > 0
+                  ? `确认清除（${clearCategories.size} 项）`
+                  : '请选择要清除的数据'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Toast 提示 ===== */}
+      {toast && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
+        >
+          <div
+            className="px-5 py-3 rounded-full text-sm shadow-lg"
+            style={{
+              backgroundColor: toast.type === 'success' ? s.accentDim : DANGER_DIM,
+              color: toast.type === 'success' ? s.accent : DANGER,
+            }}
+          >
+            {toast.message}
           </div>
         </div>
       )}
