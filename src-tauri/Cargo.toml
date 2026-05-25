@@ -1,0 +1,29 @@
+[package]
+name = "myworld"
+version = "0.1.0"
+description = "拾阶 (MyWorld) - 拾级而上，提灯而行。A local-first AI-powered life management desktop app."
+authors = ["鹏子"]
+license = "MIT"
+repository = "https://github.com/Abird64/-My-World"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "myworld_lib"
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.2", features = [] }
+tauri-plugin-log = "2"
+rusqlite = { version = "0.35", features = ["bundled"] }
+nanoid = "0.4"
+chrono = "0.4"
+lunardate = "0.2"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
