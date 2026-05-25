@@ -20,7 +20,8 @@ import { useSettingStore } from '@/stores/settingStore';
 import { addExdate } from '@/services/scheduleService';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import { Plus } from 'lucide-react';
-import type { Schedule, CreateScheduleInput, UpdateScheduleInput, ParsedIcsEvent } from '@/utils/icsParser';
+import type { Schedule, CreateScheduleInput, UpdateScheduleInput } from '@/types/schedule';
+import type { ParsedIcsEvent } from '@/utils/icsParser';
 
 type ViewMode = 'week' | 'month' | 'agenda' | 'day';
 
