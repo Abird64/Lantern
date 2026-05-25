@@ -5,8 +5,8 @@
 // Lite:     WebView2 skipped (for users who already have WebView2)
 
 import { execSync } from "child_process";
-import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from "fs";
-import { join, dirname } from "path";
+import { readFileSync, writeFileSync, copyFileSync, renameSync, mkdirSync, existsSync } from "fs";
+import { join, dirname, extname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,17 +41,24 @@ function findInstaller() {
   return null;
 }
 
-function copyToOutput(label) {
+function saveBuild(label) {
   const found = findInstaller();
-  if (found) {
-    const ext = found.split(".").pop();
-    const dest = join(outDir, `MyWorld_0.2.0_${label}.${ext}`);
-    copyFileSync(found, dest);
-    console.log(`\n-> ${dest}`);
-    return true;
+  if (!found) {
+    console.error(`\nCould not find built installer in ${bundleDir}`);
+    return false;
   }
-  console.error(`\nCould not find built installer in ${bundleDir}`);
-  return false;
+  const ext = extname(found);
+
+  // Rename in NSIS dir so next build doesn't overwrite it
+  const nsisRenamed = join(bundleDir, `拾阶_0.2.0_x64-${label}-setup${ext}`);
+  renameSync(found, nsisRenamed);
+  console.log(`  NSIS: ${nsisRenamed}`);
+
+  // Copy to dist-installer
+  const dest = join(outDir, `MyWorld_0.2.0_${label}${ext}`);
+  copyFileSync(nsisRenamed, dest);
+  console.log(`  -> ${dest}`);
+  return true;
 }
 
 const target = process.argv[2];
@@ -60,7 +67,7 @@ const target = process.argv[2];
 if (target !== "lite") {
   console.log(`\n=== Building standard (with WebView2) ===\n`);
   execSync("npx tauri build", { stdio: "inherit", cwd: root, shell: true });
-  copyToOutput("standard");
+  saveBuild("standard");
 }
 
 // ── Lite build ──
@@ -70,15 +77,13 @@ if (target !== "standard") {
   // Temporarily modify config to skip WebView2
   const original = readFileSync(configPath, "utf-8");
   const config = JSON.parse(original);
-
-  // Remove existing webviewInstallMode (which has silent:true) and set to skip
   config.bundle.windows.webviewInstallMode = { type: "skip" };
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 
   try {
     execSync("npx tauri build", { stdio: "inherit", cwd: root, shell: true });
-    copyToOutput("lite");
+    saveBuild("lite");
   } finally {
     // Restore original config
     writeFileSync(configPath, original);
@@ -88,4 +93,5 @@ if (target !== "standard") {
 if (!target) {
   console.log("\n=== Done ===");
   console.log(`Installers: ${outDir}`);
+  console.log(`NSIS dir:   ${bundleDir}`);
 }
