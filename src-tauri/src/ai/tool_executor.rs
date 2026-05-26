@@ -801,13 +801,15 @@ fn execute_list_schedules(conn: &Connection, arguments: &str) -> Result<String, 
             .unwrap_or("未分类");
         let loc = s.location.as_deref().unwrap_or("");
         let loc_str = if loc.is_empty() { String::new() } else { format!("，地点：{}", loc) };
+        // 对展开实例，提取基础 ID（去掉 _{date} 后缀），方便 AI 后续操作
+        let display_id = extract_base_id(&s.id);
         result.push_str(&format!("- **{}** ({})，{}", s.title, cat, s.start_at));
         if let Some(ref end) = s.end_at {
             result.push_str(&format!(" -> {}", end));
         }
-        result.push_str(&format!("{}{}\n", loc_str, if s.is_all_day == 1 { " [全天]" } else { "" }));
+        result.push_str(&format!("{}{}  (id: `{}`)\n", loc_str, if s.is_all_day == 1 { " [全天]" } else { "" }, display_id));
     }
-    result.push_str("\n提示：你可以说[查看某天的详情]或[创建一个新的日程]。");
+    result.push_str("\n提示：你可以说[查看某天的详情]或[创建一个新的日程]。操作日程时请使用上面列出的 id。");
     Ok(result)
 }
 
@@ -838,7 +840,10 @@ fn find_schedule_by_title(
     conn: &Connection,
     query: &str,
 ) -> Result<(Vec<schedule_repo::Schedule>, usize), String> {
-    let all = schedule_repo::list_schedules_in_range(conn, "2020-01-01", "2030-12-31")?;
+    // 搜索最近一年到未来一年的范围，避免展开过多重复实例
+    let one_year_ago = (Local::now() - Duration::days(365)).format("%Y-%m-%d").to_string();
+    let one_year_later = (Local::now() + Duration::days(365)).format("%Y-%m-%d").to_string();
+    let all = schedule_repo::list_schedules_in_range(conn, &one_year_ago, &one_year_later)?;
     let tokens: Vec<&str> = query
         .split(|c: char| c.is_whitespace() || c == '\u{ff0c}' || c == '\u{3002}')
         .filter(|t| !t.is_empty())
@@ -859,9 +864,18 @@ fn find_schedule_by_title(
         .collect();
 
     scored.sort_by(|a, b| b.1.cmp(&a.1));
-    let count = scored.len();
-    let schedules: Vec<schedule_repo::Schedule> = scored.into_iter().map(|(s, _)| s).collect();
-    Ok((schedules, count))
+
+    // 按基础 ID 去重（展开实例共享同一个 base ID）
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut deduped: Vec<schedule_repo::Schedule> = Vec::new();
+    for (s, _) in scored {
+        let bid = extract_base_id(&s.id).to_string();
+        if seen_ids.insert(bid) {
+            deduped.push(s);
+        }
+    }
+    let count = deduped.len();
+    Ok((deduped, count))
 }
 
 // ========== 更新日程 ==========
@@ -870,11 +884,11 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
     let args: ToolUpdateScheduleArgs = serde_json::from_str(arguments)
         .map_err(|e| format!("update_schedule 参数解析失败: {}", e))?;
 
-    let schedule_id: String;
+    let raw_schedule_id: String;
 
     if let Some(ref id) = args.id {
         if !id.is_empty() {
-            schedule_id = id.clone();
+            raw_schedule_id = id.clone();
         } else {
             return Err("id 不能为空".to_string());
         }
@@ -896,13 +910,16 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
                 count, names.join("")
             ));
         }
-        schedule_id = schedules[0].id.clone();
+        raw_schedule_id = schedules[0].id.clone();
     } else {
         return Err("请提供 query 或 id 来指定要修改的日程".to_string());
     }
 
+    // 处理展开实例 ID：提取基础 ID（去掉 _{date} 后缀）
+    let schedule_id = extract_base_id(&raw_schedule_id);
+
     let updated = schedule_repo::update_schedule(
-        conn, &schedule_id,
+        conn, schedule_id,
         args.title.as_deref(),
         args.description.as_deref(),
         args.start_at.as_deref(),
@@ -923,12 +940,13 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
     let args: ToolQueryOrIdArgs = serde_json::from_str(arguments)
         .map_err(|e| format!("delete_schedule 参数解析失败: {}", e))?;
 
-    // 如果有 id，直接删除
+    // 如果有 id，直接删除（处理展开实例 ID）
     if let Some(ref id) = args.id {
         if !id.is_empty() {
-            let schedule = schedule_repo::get_schedule(conn, id)?;
+            let base_id = extract_base_id(id);
+            let schedule = schedule_repo::get_schedule(conn, base_id)?;
             let title = schedule.title.clone();
-            schedule_repo::delete_schedule(conn, id)?;
+            schedule_repo::delete_schedule(conn, base_id)?;
             return Ok(format!("日程已删除：{}", title));
         }
     }
@@ -947,7 +965,8 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
     if count > 1 {
         let names: Vec<String> = schedules.iter().take(5).map(|s| {
             let date = &s.start_at[..s.start_at.len().min(16)];
-            format!("\n- {} (ID: {}, {})", s.title, s.id, date)
+            let base_id = extract_base_id(&s.id);
+            format!("\n- {} (ID: {}, {})", s.title, base_id, date)
         }).collect();
         return Err(format!(
             "找到{}个匹配[{}]的日程：{}\n\n请告诉用户是哪一个，然后用对应的 id 重新调用 delete_schedule。",
@@ -957,7 +976,8 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
 
     let s = &schedules[0];
     let title = s.title.clone();
-    schedule_repo::delete_schedule(conn, &s.id)?;
+    let base_id = extract_base_id(&s.id);
+    schedule_repo::delete_schedule(conn, base_id)?;
     Ok(format!("日程已删除：{}", title))
 }
 
@@ -1362,6 +1382,22 @@ fn status_cn(status: &str) -> &str {
         "cancelled" => "已取消",
         _ => status,
     }
+}
+
+/// 从展开实例 ID ({base}_{YYYY-MM-DD}) 中提取基础 ID
+fn extract_base_id(id: &str) -> &str {
+    // 检查是否匹配 {base}_{YYYY-MM-DD} 格式
+    if let Some(pos) = id.rfind('_') {
+        let suffix = &id[pos + 1..];
+        if suffix.len() == 10
+            && suffix.chars().nth(4) == Some('-')
+            && suffix.chars().nth(7) == Some('-')
+            && suffix.chars().filter(|c| *c == '-').count() == 2
+        {
+            return &id[..pos];
+        }
+    }
+    id
 }
 
 // ========== 日期解析 ==========

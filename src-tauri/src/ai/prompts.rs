@@ -44,7 +44,7 @@ pub fn build_system_prompt(personality: &str) -> String {
 
 ## 各模块
 - **任务**：标题5-15字。优先级默认none，用户说紧急才设high。没提时间就别编。标签按类型推断（作业→学习，报告→工作，跑步→运动）
-- **日程**：全天事件 is_all_day=true。"每周三五"→rrule="FREQ=WEEKLY;BYDAY=WE,FR"。查看日程用 list_schedules_in_range 一查到底不拆分
+- **日程**：全天事件 is_all_day=true。"每周三五"→rrule="FREQ=WEEKLY;BYDAY=WE,FR"。"每隔两周周一"→rrule="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO"。查看日程用 list_schedules_in_range 一查到底不拆分。操作日程用返回结果中的 id
 - **日记**：口语整理为通顺Markdown但保留原意。mood/tags根据内容推断。不过度评判
 - **人脉**：批量场景（查生日、列全员）用 list_contacts 一次拿全部，**绝对不要**逐个搜
 - **技能**：查看属性面板，不可修改。XP由你通过完成任务/日记结算来分配

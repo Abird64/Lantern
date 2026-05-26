@@ -17,6 +17,12 @@ const repeatOptions = [
   { id: 'monthly', label: '每月' },
 ];
 
+const intervalLabels: Record<string, string> = {
+  daily: '天',
+  weekly: '周',
+  monthly: '月',
+};
+
 const weekDays = [
   { id: 'MO', label: '一' },
   { id: 'TU', label: '二' },
@@ -40,15 +46,17 @@ function addMinutes(localDatetime: string, minutes: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function buildRrule(repeat: string, selectedDays: string[]): string | undefined {
+function buildRrule(repeat: string, selectedDays: string[], interval: number): string | undefined {
   if (repeat === 'none') return undefined;
-  if (repeat === 'daily') return 'FREQ=DAILY';
-  if (repeat === 'monthly') return 'FREQ=MONTHLY';
-  if (repeat === 'weekly') {
-    if (selectedDays.length === 0) return 'FREQ=WEEKLY';
-    return `FREQ=WEEKLY;BYDAY=${selectedDays.join(',')}`;
+  const freq = repeat.toUpperCase();
+  const parts: string[] = [`FREQ=${freq}`];
+  if (interval > 1) {
+    parts.push(`INTERVAL=${interval}`);
   }
-  return undefined;
+  if (repeat === 'weekly' && selectedDays.length > 0) {
+    parts.push(`BYDAY=${selectedDays.join(',')}`);
+  }
+  return parts.join(';');
 }
 
 export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: EventFormProps) {
@@ -64,6 +72,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
     calendars.find((c) => c.is_default)?.id ?? calendars[0]?.id ?? null
   );
   const [repeat, setRepeat] = useState('none');
+  const [interval, setInterval] = useState(1);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [isSubmitHovered, setIsSubmitHovered] = useState(false);
   const [isCancelHovered, setIsCancelHovered] = useState(false);
@@ -72,6 +81,15 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
   const handleStartChange = (val: string) => {
     setStartAt(val);
     setEndAt(addMinutes(val, 40));
+  };
+
+  // 切换重复类型：重置间隔为 1
+  const handleRepeatChange = (id: string) => {
+    setRepeat(id);
+    if (id === 'none') {
+      setInterval(1);
+      setSelectedDays([]);
+    }
   };
 
   // 切换星期选择
@@ -85,7 +103,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
     e.preventDefault();
     if (!title.trim()) return;
 
-    const rrule = buildRrule(repeat, selectedDays);
+    const rrule = buildRrule(repeat, selectedDays, interval);
 
     onSubmit({
       title: title.trim(),
@@ -190,7 +208,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => setRepeat(opt.id)}
+                  onClick={() => handleRepeatChange(opt.id)}
                   className={`px-4 py-1.5 rounded-full text-sm transition-all ${
                     repeat === opt.id
                       ? 'shadow-md'
@@ -209,6 +227,32 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
                 </button>
               ))}
             </div>
+
+            {/* 间隔选择器：选中非 none 时显示 */}
+            {repeat !== 'none' && (
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-xs" style={{ color: `${t.cardText}99` }}>每隔</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={interval}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value) || 1;
+                    setInterval(Math.max(1, Math.min(99, v)));
+                  }}
+                  className="w-14 px-2 py-1 rounded-xl text-center text-sm outline-none"
+                  style={{
+                    color: t.cardText,
+                    border: `1px solid ${t.accent}4D`,
+                    backgroundColor: t.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                  }}
+                />
+                <span className="text-xs" style={{ color: `${t.cardText}99` }}>
+                  {intervalLabels[repeat]}
+                </span>
+              </div>
+            )}
 
             {/* 每周：选择星期 */}
             {repeat === 'weekly' && (

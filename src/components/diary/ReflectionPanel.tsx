@@ -163,7 +163,7 @@ export function ReflectionPanel({
           {/* 空状态：无联系人需要同步 */}
           {!hasContacts && hasReflection && (
             <div className="text-center py-2">
-              <p className="font-zhuque text-sm" style={{ color: MUTED }}>今日日记未提取到联系人</p>
+              <p className="font-zhuque text-sm" style={{ color: MUTED }}>暂无待处理的联系人信息</p>
             </div>
           )}
         </div>

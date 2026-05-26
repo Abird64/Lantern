@@ -375,7 +375,7 @@ fn create_schedule_definition() -> ToolDefinition {
                     },
                     "rrule": {
                         "type": "string",
-                        "description": "重复规则，iCal RRULE格式。如 FREQ=WEEKLY;BYDAY=MO,TU 表示每周一二重复。注意：结束时间用UNTIL指定，格式为YYYYMMDDTHHMMSSZ"
+                        "description": "重复规则，iCal RRULE格式。如 FREQ=WEEKLY;BYDAY=MO,TU 表示每周一二重复。INTERVAL=2表示每隔一次，如 FREQ=WEEKLY;INTERVAL=2 表示每隔两周。注意：结束时间用UNTIL指定，格式为YYYYMMDDTHHMMSSZ"
                     },
                     "reminder": {
                         "type": "string",
@@ -393,7 +393,7 @@ fn list_schedules_in_range_definition() -> ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "list_schedules_in_range".to_string(),
-            description: "查看某个日期范围内的日程/事件。当用户问[这周有什么安排/今天有什么课/下周有什么计划/某天的日程]时调用。包含重复事件的展开实例。".to_string(),
+            description: "查看某个日期范围内的日程/事件。当用户问[这周有什么安排/今天有什么课/下周有什么计划/某天的日程]时调用。包含重复事件的展开实例。返回每条日程的 id 可用于后续修改/删除操作。".to_string(),
             parameters: ToolParameters {
                 param_type: "object".to_string(),
                 properties: serde_json::json!({
@@ -417,7 +417,7 @@ fn list_calendars_definition() -> ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "list_calendars".to_string(),
-            description: "查看所有可用的日历表（用户自定义的分类）。创建或修改日程时，需要指定 calendar_id 来分配日程到某个日历。".to_string(),
+            description: "查看所有可用的日历分类（仅返回日历定义：名称、ID、颜色，不含具体日程事件）。如需查看某天的日程安排，请使用 list_schedules_in_range。创建或修改日程时，用这里的 calendar_id 分配日程到对应日历。".to_string(),
             parameters: ToolParameters {
                 param_type: "object".to_string(),
                 properties: serde_json::json!({}),
