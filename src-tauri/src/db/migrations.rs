@@ -377,6 +377,29 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         rusqlite::params![nanoid::nanoid!()],
     );
 
+    // 增量迁移：AI 小本本记忆表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS ai_memories (
+            id              TEXT PRIMARY KEY,
+            content         TEXT NOT NULL,
+            memory_type     TEXT NOT NULL DEFAULT 'fact',
+            source_text     TEXT,
+            conversation_id TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE SET NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_type ON ai_memories(memory_type)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_created ON ai_memories(created_at DESC)",
+        [],
+    );
+
     log::info!("Database migrations completed");
     Ok(())
 }

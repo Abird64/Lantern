@@ -3,7 +3,7 @@ use tauri::State;
 use crate::ai::client;
 use crate::ai::{prompts, tool_executor, tools};
 use crate::db::connection::{AppDataState, DbState};
-use crate::db::repositories::{ai_repo, setting_repo};
+use crate::db::repositories::{ai_repo, memory_repo, setting_repo};
 
 fn get_setting_or(conn: &rusqlite::Connection, key: &str, fallback: &str) -> String {
     setting_repo::get_setting(conn, key)
@@ -69,7 +69,8 @@ pub async fn send_message(
         ai_repo::create_message(&conn, &conversation_id, "user", Some(&content), None, None, None)?;
 
         let personality = get_setting_or(&conn, "ai.personality", "你是一个温暖的人生管理助手，名叫提灯。");
-        let system_prompt = prompts::build_system_prompt(&personality);
+        let memories = memory_repo::list_memories_for_injection(&conn, 50).unwrap_or_default();
+        let system_prompt = prompts::build_system_prompt(&personality, &memories);
 
         let mut chat_messages: Vec<client::ChatMessage> = Vec::new();
         chat_messages.push(client::ChatMessage {
@@ -244,7 +245,8 @@ fn build_chat_context(
         "ai.personality",
         "你是一个温暖的人生管理助手，名叫提灯。",
     );
-    let system_prompt = prompts::build_system_prompt(&personality);
+    let memories = memory_repo::list_memories_for_injection(conn, 50).unwrap_or_default();
+    let system_prompt = prompts::build_system_prompt(&personality, &memories);
 
     let mut chat_messages = vec![client::ChatMessage {
         role: "system".to_string(),
@@ -377,27 +379,43 @@ pub async fn modify_tool_calls(
     state: State<'_, DbState>,
     conversation_id: String,
     feedback: String,
+    message_id: Option<String>,
+    tool_call_id: Option<String>,
 ) -> Result<Vec<ai_repo::Message>, String> {
-    // 1. 取消未执行的 tool_calls + 保存反馈 + 构建上下文
+    // 1. 取消指定的 tool_call + 保存反馈 + 构建上下文
     let (chat_messages, config, tool_defs) = {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
 
-        // 查找最后一个带 tool_calls 的 assistant 消息，写入取消 tool 消息
+        // 查找对应 message 中的 tool_calls，取消指定或全部
         {
             let msgs = ai_repo::list_messages(&conn, &conversation_id)?;
-            if let Some(last_assistant) =
+
+            // 如果指定了 message_id，精确定位；否则回退到最后一个有 tool_calls 的 assistant 消息
+            let target_msg: Option<&ai_repo::Message> = if let Some(ref mid) = message_id {
+                msgs.iter().find(|m| m.id == *mid)
+            } else {
                 msgs.iter().rev().find(|m| m.role == "assistant" && m.tool_calls.is_some())
-            {
-                // 检查该消息之后是否有 tool 消息（即是否已被执行/取消）
-                let Some(last_idx) = msgs.iter().position(|m| m.id == last_assistant.id) else {
+            };
+
+            if let Some(target) = target_msg {
+                let Some(last_idx) = msgs.iter().position(|m| m.id == target.id) else {
                     return Err("找不到 assistant 消息位置".to_string());
                 };
                 let has_tool_after = msgs[last_idx + 1..].iter().any(|m| m.role == "tool");
                 if !has_tool_after {
                     let tool_calls: Vec<tools::ToolCall> =
-                        serde_json::from_str(last_assistant.tool_calls.as_deref().unwrap_or("[]"))
+                        serde_json::from_str(target.tool_calls.as_deref().unwrap_or("[]"))
                             .unwrap_or_default();
-                    for tc in &tool_calls {
+
+                    // 如果指定了 tool_call_id，只取消那一个；否则全部取消
+                    let calls_to_cancel: Vec<&tools::ToolCall> =
+                        if let Some(ref tid) = tool_call_id {
+                            tool_calls.iter().filter(|tc| tc.id == *tid).collect()
+                        } else {
+                            tool_calls.iter().collect()
+                        };
+
+                    for tc in &calls_to_cancel {
                         ai_repo::create_message(
                             &conn,
                             &conversation_id,
@@ -550,6 +568,7 @@ pub async fn cancel_tool_calls(
     state: State<'_, DbState>,
     conversation_id: String,
     message_id: String,
+    tool_call_id: Option<String>,
 ) -> Result<Vec<ai_repo::Message>, String> {
     // 1. 写入取消 tool 消息 + 获取配置
     let config = {
@@ -564,7 +583,18 @@ pub async fn cancel_tool_calls(
             serde_json::from_str(&tool_calls_str)
                 .map_err(|e| format!("tool_calls 解析失败: {}", e))?;
 
-        for tc in &tool_calls {
+        // 如果指定了 tool_call_id，只取消那一个；否则全部取消
+        let calls_to_cancel: Vec<&tools::ToolCall> = if let Some(ref tc_id) = tool_call_id {
+            tool_calls.iter().filter(|tc| tc.id == *tc_id).collect()
+        } else {
+            tool_calls.iter().collect()
+        };
+
+        if calls_to_cancel.is_empty() && tool_call_id.is_some() {
+            return Err("未找到指定的 tool_call".to_string());
+        }
+
+        for tc in &calls_to_cancel {
             ai_repo::create_message(
                 &conn,
                 &conversation_id,

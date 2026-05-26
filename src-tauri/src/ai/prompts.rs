@@ -1,10 +1,13 @@
 use chrono::Local;
 use lunardate::LunarDate;
 
+use crate::db::repositories::memory_repo::Memory;
+
 /// 构建"提灯"的系统提示词
 ///
 /// `personality` 来自用户设置 `ai.personality`，默认值由设置页提供
-pub fn build_system_prompt(personality: &str) -> String {
+/// `memories` 来自小本本记忆表，注入为跨对话上下文
+pub fn build_system_prompt(personality: &str, memories: &[Memory]) -> String {
     let now = Local::now();
     let datetime = now.format("现在时间：%Y年%m月%d日 %A %H:%M，时区 Asia/Shanghai (UTC+8)");
 
@@ -58,12 +61,38 @@ pub fn build_system_prompt(personality: &str) -> String {
 ## 消歧
 - 搜索用空格分隔多关键词，"高等 数学 作业"优于"数学作业"
 - 多条匹配→把选项（带ID）列给用户选，再用id精确定位
+
+## 小本本使用规则
+你有一个"小本本"，用来了解"用户是一个什么样的人"。在对话中留意以下维度的信息，发现后主动调用 record_memory 记下来。
+
+### 记忆类型
+- identity=身份信息：姓名、年龄、性别、职业、学校、所在地等基本档案
+- interest=兴趣爱好：喜欢的书/音乐/电影/运动、在学什么、关注什么领域
+- taste=口味偏好：饮食口味、审美风格、生活方式偏好（如"喜欢极简设计""爱吃辣"）
+- habit=日常习惯：作息规律、固定活动、工作学习节奏、行为模式
+- personality=性格特点：感性/理性、内向/外向、做事风格、价值观倾向
+- relationship=人际关系：家人/朋友/同事构成、与谁亲近、社交偏好
+- status=当前状态：近期在忙什么、生活阶段（如"大三""刚换工作"）
+- goal=近期目标：想达成的事、在准备考试/面试/项目、长期愿望
+- event=重要事件：生日、纪念日、重要经历（如"上个月去了西藏"）
+- other=其他：以上都不贴切但值得记的
+
+### 记录原则
+- 用第三人称简洁陈述，如"用户每天午饭散步二十分钟""用户正在备考研究生"
+- 记之前先 search_memories 确认不重复
+- 不确定、开玩笑、含糊的内容不记
+- 用户纠正或表示记错了→delete_memory 删掉
+
+### 什么不记
+- 一次性任务（"明天交报告"→建任务，不记记忆）
+- 临时情绪（"今天好累"→除非是长期状态）
+- 泛泛而谈、无具体信息的对话
 "#,
         datetime = datetime,
         lunar_str = lunar_str
     );
 
-    let mut prompt = String::with_capacity(base.len() + personality.len() + 128);
+    let mut prompt = String::with_capacity(base.len() + personality.len() + 4096);
 
     // 先放用户自定义的性格设定
     if !personality.is_empty() {
@@ -73,6 +102,28 @@ pub fn build_system_prompt(personality: &str) -> String {
         if !personality.ends_with('\n') {
             prompt.push('\n');
         }
+    }
+
+    // 注入小本本记忆
+    if !memories.is_empty() {
+        prompt.push_str("## 你对用户的了解（小本本）\n");
+        prompt.push_str("以下是你过去记下的关于用户的信息，请在回答时自然运用，但不要刻意复述。\n\n");
+        for m in memories {
+            let label = match m.memory_type.as_str() {
+                "identity" => "身份",
+                "interest" => "爱好",
+                "taste" => "口味",
+                "habit" => "习惯",
+                "personality" => "性格",
+                "relationship" => "关系",
+                "status" => "状态",
+                "goal" => "目标",
+                "event" => "事件",
+                _ => "其他",
+            };
+            prompt.push_str(&format!("- [{}] {}\n", label, m.content));
+        }
+        prompt.push('\n');
     }
 
     prompt.push_str(&base);

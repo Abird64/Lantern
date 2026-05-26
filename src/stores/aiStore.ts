@@ -23,8 +23,8 @@ interface AiState {
   stopGeneration: () => void;
   executeToolCalls: (messageId: string) => Promise<void>;
   executeSingleToolCall: (messageId: string, toolCallId: string) => Promise<void>;
-  cancelToolCalls: (messageId: string) => Promise<void>;
-  modifyToolCalls: (feedback: string) => Promise<void>;
+  cancelToolCalls: (messageId: string, toolCallId?: string) => Promise<void>;
+  modifyToolCalls: (feedback: string, messageId?: string, toolCallId?: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -176,26 +176,26 @@ export const useAiStore = create<AiState>((set, get) => ({
     }
   },
 
-  cancelToolCalls: async (messageId: string) => {
+  cancelToolCalls: async (messageId: string, toolCallId?: string) => {
     const { currentConversation } = get();
     if (!currentConversation) return;
 
     set({ isExecuting: true, error: null });
     try {
-      const updatedMessages = await aiService.cancelToolCalls(currentConversation, messageId);
+      const updatedMessages = await aiService.cancelToolCalls(currentConversation, messageId, toolCallId);
       set({ messages: updatedMessages, isExecuting: false });
     } catch (e) {
       set({ error: String(e), isExecuting: false });
     }
   },
 
-  modifyToolCalls: async (feedback: string) => {
+  modifyToolCalls: async (feedback: string, messageId?: string, toolCallId?: string) => {
     const { currentConversation } = get();
     if (!currentConversation) return;
 
     set({ isExecuting: true, error: null });
     try {
-      const updatedMessages = await aiService.modifyToolCalls(currentConversation, feedback);
+      const updatedMessages = await aiService.modifyToolCalls(currentConversation, feedback, messageId, toolCallId);
       set({ messages: updatedMessages, isExecuting: false });
     } catch (e) {
       set({ error: String(e), isExecuting: false });

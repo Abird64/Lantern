@@ -204,8 +204,8 @@ export function LanternModal({ show, onClose }: LanternModalProps) {
                           toolCall={tc}
                           isExecuting={isExecuting}
                           onConfirm={() => executeSingleToolCall(msg.id, tc.id)}
-                          onCancel={() => cancelToolCalls(msg.id)}
-                          onModify={(feedback) => modifyToolCalls(feedback)}
+                          onCancel={() => cancelToolCalls(msg.id, tc.id)}
+                          onModify={(feedback) => modifyToolCalls(feedback, msg.id, tc.id)}
                         />
                       );
                     })}

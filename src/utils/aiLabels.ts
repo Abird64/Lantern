@@ -25,6 +25,10 @@ export const TOOL_LABELS: Record<string, { group: string; label: string; color: 
   // 技能
   list_skills:       { group: '查询', label: '查看属性', color: '#6B9BD2' },
   get_task_skills:   { group: '查询', label: '查看任务属性', color: '#6B9BD2' },
+  // 记忆
+  record_memory:     { group: '创建', label: '记录记忆', color: '#58A968' },
+  search_memories:   { group: '查询', label: '搜索记忆', color: '#6B9BD2' },
+  delete_memory:     { group: '删除', label: '删除记忆', color: '#E65C5C' },
 };
 
 /** 状态中文映射 */

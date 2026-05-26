@@ -82,6 +82,8 @@ pub fn run() {
             commands::favorite_commands::delete_favorite,
             commands::favorite_commands::delete_favorite_by_message_id,
             commands::favorite_commands::delete_all_favorites,
+            commands::memory_commands::list_memories,
+            commands::memory_commands::delete_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

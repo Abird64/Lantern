@@ -1,6 +1,6 @@
 import { useUIStore } from '@/stores/uiStore';
 import { usePageTheme } from '@/hooks/usePageTheme';
-import { Home, ListTodo, Calendar, BookOpen, Users, Sparkles, Settings } from 'lucide-react';
+import { Home, ListTodo, Calendar, BookOpen, Users, Bookmark, Sparkles, Settings } from 'lucide-react';
 
 const tabs = [
   { id: 'lantern', label: '助手', icon: Home },
@@ -8,6 +8,7 @@ const tabs = [
   { id: 'schedule', label: '日历', icon: Calendar },
   { id: 'diary', label: '日记', icon: BookOpen },
   { id: 'relations', label: '相识', icon: Users },
+  { id: 'memories', label: '小本本', icon: Bookmark },
   { id: 'skills', label: '修为', icon: Sparkles },
   { id: 'settings', label: '设置', icon: Settings },
 ];

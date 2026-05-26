@@ -137,6 +137,21 @@ export const themes: Record<string, PageTheme> = {
     warning: '#F2C94C',
     success: '#27AE60',
   },
+  memories: {
+    id: 'memories',
+    name: '宣纸黄',
+    bg: '#F5F0E8',
+    nav: '#3D3530',
+    accent: '#B8860B',
+    accentLight: '#B8860B50',
+    text: '#2D2D2D',
+    card: '#FDF8F0',
+    cardText: '#2D2D2D',
+    isDark: false,
+    danger: '#E74C3C',
+    warning: '#F39C12',
+    success: '#27AE60',
+  },
 };
 
 /** 可供统一模式选择的主题（排除设置页自身配色） */

@@ -271,9 +271,9 @@ export function ChatView({
                                 onConfirm={() =>
                                   executeSingleToolCall(msg.id, tc.id)
                                 }
-                                onCancel={() => cancelToolCalls(msg.id)}
+                                onCancel={() => cancelToolCalls(msg.id, tc.id)}
                                 onModify={(feedback) =>
-                                  modifyToolCalls(feedback)
+                                  modifyToolCalls(feedback, msg.id, tc.id)
                                 }
                               />
                             );

@@ -7,6 +7,7 @@ import {
   SchedulePage,
   DiaryPage,
   RelationsPage,
+  MemoriesPage,
   SkillsPage,
   SettingsPage,
 } from '@/pages';
@@ -27,6 +28,8 @@ function App() {
         return <DiaryPage />;
       case 'relations':
         return <RelationsPage />;
+      case 'memories':
+        return <MemoriesPage />;
       case 'skills':
         return <SkillsPage />;
       case 'settings':
