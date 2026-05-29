@@ -42,20 +42,27 @@ export async function executeToolCalls(
   return tauriInvoke<AiMessage[]>('execute_tool_calls', { conversationId, messageId });
 }
 
-/** 取消工具调用 → AI 跟进确认取消 */
+/** 取消工具调用 → AI 跟进确认取消。toolCallId 指定则只取消那一个，否则全部取消 */
 export async function cancelToolCalls(
   conversationId: string,
   messageId: string,
+  toolCallId?: string,
 ): Promise<AiMessage[]> {
-  return tauriInvoke<AiMessage[]>('cancel_tool_calls', { conversationId, messageId });
+  return tauriInvoke<AiMessage[]>('cancel_tool_calls', { conversationId, messageId, toolCallId: toolCallId ?? null });
 }
 
-/** 修改工具调用 → 用户反馈 → AI 重新生成卡片 */
+/** 修改工具调用 → 用户反馈 → AI 重新生成卡片。messageId/toolCallId 指定则只修改那一个卡片 */
 export async function modifyToolCalls(
   conversationId: string,
   feedback: string,
+  messageId?: string,
+  toolCallId?: string,
 ): Promise<AiMessage[]> {
-  return tauriInvoke<AiMessage[]>('modify_tool_calls', { conversationId, feedback });
+  return tauriInvoke<AiMessage[]>('modify_tool_calls', {
+    conversationId, feedback,
+    messageId: messageId ?? null,
+    toolCallId: toolCallId ?? null,
+  });
 }
 
 /** 执行单个工具调用（不触发 AI 跟进） */

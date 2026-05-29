@@ -75,6 +75,17 @@ pub fn get_tools() -> Vec<ToolDefinition> {
         get_task_skills_definition(),
         // ── 工具 (1) ──
         resolve_date_definition(),
+        // ── 记忆 (3) ──
+        record_memory_definition(),
+        search_memories_definition(),
+        delete_memory_definition(),
+        // ── 倒数日 (1) ──
+        list_countdowns_definition(),
+        // ── 习惯 (4) ──
+        list_habits_definition(),
+        create_habit_definition(),
+        check_habit_definition(),
+        uncheck_habit_definition(),
     ]
 }
 
@@ -92,6 +103,9 @@ pub fn is_query_tool(name: &str) -> bool {
             | "list_skills"
             | "get_task_skills"
             | "resolve_date"
+            | "search_memories"
+            | "list_countdowns"
+            | "list_habits"
     )
 }
 
@@ -375,11 +389,16 @@ fn create_schedule_definition() -> ToolDefinition {
                     },
                     "rrule": {
                         "type": "string",
-                        "description": "重复规则，iCal RRULE格式。如 FREQ=WEEKLY;BYDAY=MO,TU 表示每周一二重复。注意：结束时间用UNTIL指定，格式为YYYYMMDDTHHMMSSZ"
+                        "description": "重复规则，iCal RRULE格式。如 FREQ=WEEKLY;BYDAY=MO,TU 表示每周一二重复。INTERVAL=2表示每隔一次，如 FREQ=WEEKLY;INTERVAL=2 表示每隔两周。注意：结束时间用UNTIL指定，格式为YYYYMMDDTHHMMSSZ"
                     },
                     "reminder": {
                         "type": "string",
                         "description": "提醒时间，提前多少分钟，如'10'表示提前10分钟提醒"
+                    },
+                    "event_type": {
+                        "type": "string",
+                        "enum": ["event", "countdown"],
+                        "description": "事件类型：event=普通日程（默认），countdown=倒数日。倒数日的 start_at 填目标日期"
                     }
                 }),
                 required: vec!["title".to_string(), "start_at".to_string()],
@@ -393,7 +412,7 @@ fn list_schedules_in_range_definition() -> ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "list_schedules_in_range".to_string(),
-            description: "查看某个日期范围内的日程/事件。当用户问[这周有什么安排/今天有什么课/下周有什么计划/某天的日程]时调用。包含重复事件的展开实例。".to_string(),
+            description: "查看某个日期范围内的日程/事件。当用户问[这周有什么安排/今天有什么课/下周有什么计划/某天的日程]时调用。包含重复事件的展开实例。返回每条日程的 id 可用于后续修改/删除操作。".to_string(),
             parameters: ToolParameters {
                 param_type: "object".to_string(),
                 properties: serde_json::json!({
@@ -417,7 +436,7 @@ fn list_calendars_definition() -> ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "list_calendars".to_string(),
-            description: "查看所有可用的日历表（用户自定义的分类）。创建或修改日程时，需要指定 calendar_id 来分配日程到某个日历。".to_string(),
+            description: "查看所有可用的日历分类（仅返回日历定义：名称、ID、颜色，不含具体日程事件）。如需查看某天的日程安排，请使用 list_schedules_in_range。创建或修改日程时，用这里的 calendar_id 分配日程到对应日历。".to_string(),
             parameters: ToolParameters {
                 param_type: "object".to_string(),
                 properties: serde_json::json!({}),
@@ -874,6 +893,219 @@ fn resolve_date_definition() -> ToolDefinition {
                     }
                 }),
                 required: vec!["expression".to_string()],
+            },
+        },
+    }
+}
+
+// ====================================================================
+// 记忆工具
+// ====================================================================
+
+fn record_memory_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "record_memory".to_string(),
+            description: "在[小本本]中记录一条关于用户的记忆。当你了解到用户的身份、爱好、口味、习惯、性格、人际关系、近期状态或目标等信息时，主动调用此工具记录。写操作需要用户确认。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "content": {
+                        "type": "string",
+                        "description": "记忆内容，用简洁的第三人称陈述句，如'用户每天下午3点喝咖啡''用户喜欢简洁的设计风格'"
+                    },
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["identity", "interest", "taste", "habit", "personality", "relationship", "status", "goal", "event", "other"],
+                        "description": "记忆类型：identity=身份信息，interest=兴趣爱好，taste=口味偏好，habit=日常习惯，personality=性格特点，relationship=人际关系，status=当前状态，goal=近期目标，event=重要事件，other=其他"
+                    },
+                    "source_text": {
+                        "type": "string",
+                        "description": "触发记录的用户原话或上下文摘要（可选）"
+                    }
+                }),
+                required: vec!["content".to_string(), "memory_type".to_string()],
+            },
+        },
+    }
+}
+
+fn search_memories_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "search_memories".to_string(),
+            description: "搜索小本本中的记忆。在记录新记忆前，先用此工具检查是否已有类似记忆，避免重复。也可用于回忆之前记录过的用户信息。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词，匹配记忆内容"
+                    },
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["identity", "interest", "taste", "habit", "personality", "relationship", "status", "goal", "event", "other"],
+                        "description": "按类型筛选（可选）"
+                    }
+                }),
+                required: vec![],
+            },
+        },
+    }
+}
+
+fn delete_memory_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "delete_memory".to_string(),
+            description: "删除小本本中的一条记忆。当用户说某条记忆错了、过时了、或者要求删掉时调用。需要用户确认。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词，匹配要删除的记忆内容"
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "记忆的ID。如果已知ID（比如从 search_memories 结果中获取），直接传id精确删除"
+                    }
+                }),
+                required: vec![],
+            },
+        },
+    }
+}
+
+// ====================================================================
+// 倒数日工具
+// ====================================================================
+
+fn list_countdowns_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "list_countdowns".to_string(),
+            description: "查看所有倒数日。当用户问[有哪些倒数日/看看倒数/离什么还有多久]时调用。返回每个倒数日的标题、目标日期和剩余天数。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
+            },
+        },
+    }
+}
+
+// ====================================================================
+// 习惯工具
+// ====================================================================
+
+fn list_habits_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "list_habits".to_string(),
+            description: "查看所有习惯及打卡状态。当用户问[有哪些习惯/习惯打卡情况/看看习惯]时调用。返回每个习惯的名称、频率、连续打卡天数、今日是否已打卡。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
+            },
+        },
+    }
+}
+
+fn create_habit_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "create_habit".to_string(),
+            description: "创建一个新习惯。当用户说[加个习惯/养成一个习惯/开始打卡XX]时调用。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "name": {
+                        "type": "string",
+                        "description": "习惯名称，如'阅读''运动''早起'"
+                    },
+                    "frequency_type": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "custom"],
+                        "description": "频率类型：daily=每天（默认），weekly=每周，custom=自定义"
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "图标 emoji，如'📖''🏃''🌅'"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "颜色标识，如'red''blue''green'"
+                    }
+                }),
+                required: vec!["name".to_string()],
+            },
+        },
+    }
+}
+
+fn check_habit_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "check_habit".to_string(),
+            description: "给习惯打卡（签到）。当用户说[打卡/签到/完成了XX习惯]时调用。优先用habit_id精确指定，或通过query按名称搜索。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "habit_id": {
+                        "type": "string",
+                        "description": "习惯的唯一ID。如果已知ID（比如从list_habits结果中获取），直接用habit_id"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "习惯名称关键词，用于搜索要打卡的习惯。如果已知habit_id则不需要填"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "打卡日期，YYYY-MM-DD格式。不填则默认今天"
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "打卡备注，如'跑了3公里''读了50页'"
+                    }
+                }),
+                required: vec![],
+            },
+        },
+    }
+}
+
+fn uncheck_habit_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".to_string(),
+        function: FunctionDef {
+            name: "uncheck_habit".to_string(),
+            description: "取消习惯打卡。当用户说[取消打卡/撤销签到/今天不算]时调用。优先用habit_id精确指定，或通过query按名称搜索。".to_string(),
+            parameters: ToolParameters {
+                param_type: "object".to_string(),
+                properties: serde_json::json!({
+                    "habit_id": {
+                        "type": "string",
+                        "description": "习惯的唯一ID。如果已知ID，直接用habit_id"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "习惯名称关键词，用于搜索要取消打卡的习惯"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "要取消打卡的日期，YYYY-MM-DD格式。不填则默认今天"
+                    }
+                }),
+                required: vec![],
             },
         },
     }

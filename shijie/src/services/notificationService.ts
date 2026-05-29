@@ -66,7 +66,6 @@ function checkReminders(schedules: Schedule[], onReminder: (event: Schedule) => 
   for (const event of schedules) {
     if (notifiedEvents.has(event.id)) continue;
     if (!event.start_at) continue;
-    if (event.status === 'completed' || event.status === 'cancelled') continue;
 
     const reminderMinutes = getReminderMinutes(event) ?? DEFAULT_REMINDER_MINUTES;
     const startTime = new Date(event.start_at);

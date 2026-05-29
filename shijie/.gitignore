@@ -14,7 +14,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-installer
 *.local
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
 
 # Editor directories and files
 .vscode/*

@@ -377,6 +377,77 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         rusqlite::params![nanoid::nanoid!()],
     );
 
+    // 增量迁移：AI 小本本记忆表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS ai_memories (
+            id              TEXT PRIMARY KEY,
+            content         TEXT NOT NULL,
+            memory_type     TEXT NOT NULL DEFAULT 'fact',
+            source_text     TEXT,
+            conversation_id TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE SET NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_type ON ai_memories(memory_type)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_created ON ai_memories(created_at DESC)",
+        [],
+    );
+
+    // 增量迁移：schedules 表加 event_type（'event' 普通日程 / 'countdown' 倒数日）
+    let _ = conn.execute(
+        "ALTER TABLE schedules ADD COLUMN event_type TEXT DEFAULT 'event'",
+        [],
+    );
+
+    // 增量迁移：习惯表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS habits (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            icon            TEXT,
+            color           TEXT,
+            frequency_type  TEXT NOT NULL DEFAULT 'daily',
+            frequency_value TEXT,
+            target_minutes  INTEGER,
+            skill_id        TEXT,
+            xp_per_check    INTEGER DEFAULT 5,
+            is_active       INTEGER DEFAULT 1,
+            sort_order      INTEGER DEFAULT 0,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS habit_records (
+            id          TEXT PRIMARY KEY,
+            habit_id    TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+            checked_at  TEXT NOT NULL,
+            note        TEXT,
+            created_at  TEXT NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_habit_records_habit ON habit_records(habit_id)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_habit_records_date ON habit_records(checked_at)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_records_unique ON habit_records(habit_id, checked_at)",
+        [],
+    );
+
     log::info!("Database migrations completed");
     Ok(())
 }

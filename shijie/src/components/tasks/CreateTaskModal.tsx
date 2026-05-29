@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, ChevronDown } from 'lucide-react';
-import { SKILL_COLORS, SKILL_ORDER } from '@/components/ui';
-import { usePageTheme } from '@/hooks/usePageTheme';
-import type { Task } from '@/types/task';
+import { SKILL_COLORS, SKILL_ORDER } from '@/styles/theme';
+import { useAppTheme } from '@/stores/themeStore';
 
 interface CreateTaskModalProps {
   show: boolean;
@@ -22,6 +21,7 @@ export interface CreateTaskData {
 }
 
 export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProps) {
+  const appTheme = useAppTheme();
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('');
   const [estimatedMinutes, setEstimatedMinutes] = useState('');
@@ -34,8 +34,6 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
   const [skillXps, setSkillXps] = useState<Record<string, number>>({});
   const [sending, setSending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const theme = usePageTheme('tasks');
-
   useEffect(() => {
     if (show) {
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -80,7 +78,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
   };
 
   // 动态颜色
-  const txt = theme.cardText;
+  const txt = appTheme.ink;
   const txtHint = txt + '33';
   const txtLight = txt + '4D';
   const txtMid = txt + '80';
@@ -93,17 +91,17 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
   return (
     <>
       <style>{`
-        #create-task-modal .focus-accent:focus { border-color: ${theme.accent}; outline: none; }
-        #create-task-modal .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${theme.accent}4D; }
-        #create-task-modal .btn-create { background-color: ${theme.accent}; }
-        #create-task-modal .btn-create:hover { background-color: ${theme.accent}DD; }
-        #create-task-modal .input-focus-accent:focus { border-color: ${theme.accent}; outline: none; }
+        #create-task-modal .focus-accent:focus { border-color: ${appTheme.primary}; outline: none; }
+        #create-task-modal .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${appTheme.primary}4D; }
+        #create-task-modal .btn-create { background-color: ${appTheme.primary}; }
+        #create-task-modal .btn-create:hover { background-color: ${appTheme.primary}DD; }
+        #create-task-modal .input-focus-accent:focus { border-color: ${appTheme.primary}; outline: none; }
         #create-task-modal input::placeholder,
         #create-task-modal textarea::placeholder { color: ${txtHint}; }
       `}</style>
       <div id="create-task-modal" className="fixed inset-0 z-50 flex items-end justify-center pb-32">
         <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-        <div className="relative w-full max-w-[600px] rounded-3xl shadow-2xl p-8 mx-4" style={{ backgroundColor: theme.card }}>
+        <div className="relative w-full max-w-[600px] rounded-[18px] p-8 mx-4" style={{ backgroundColor: appTheme.canvas }}>
         <input
           ref={inputRef}
           type="text"
@@ -116,7 +114,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
         />
 
         {/* 截止时间 + 优先级 */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: bgSubtle }}>
             <span className="text-sm shrink-0" style={{ color: txtLight }}>截止</span>
             <input
@@ -142,7 +140,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
             {[
               { value: 'high', label: '紧急', color: '#E74C3C' },
               { value: 'medium', label: '重要', color: '#F39C12' },
-              { value: 'low', label: '一般', color: theme.accent },
+              { value: 'low', label: '一般', color: appTheme.primary },
             ].map((p) => (
               <button
                 key={p.value}
@@ -173,7 +171,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
         {/* 展开区域 */}
         {expanded && (
           <div className="space-y-4 mb-5">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: bgSubtle }}>
                 <span className="text-sm shrink-0" style={{ color: txtLight }}>开始</span>
                 <input
@@ -298,7 +296,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
             disabled={!title.trim() || sending}
             className="flex-1 py-3 rounded-2xl text-base font-medium transition-all"
             style={title.trim() && !sending
-              ? { backgroundColor: theme.accent, color: '#fff' }
+              ? { backgroundColor: appTheme.primary, color: '#fff' }
               : { backgroundColor: bgDisabled, color: txtLight }}
           >
             创建

@@ -18,12 +18,13 @@ pub struct Schedule {
     pub source_id: Option<String>,
     pub category: Option<String>,
     pub calendar_id: Option<String>,
+    pub event_type: String,
     pub exdates: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
-const SCHEDULE_COLUMNS: &str = "id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, exdates, created_at, updated_at";
+const SCHEDULE_COLUMNS: &str = "id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, event_type, exdates, created_at, updated_at";
 
 fn schedule_from_row(row: &Row) -> rusqlite::Result<Schedule> {
     Ok(Schedule {
@@ -41,6 +42,7 @@ fn schedule_from_row(row: &Row) -> rusqlite::Result<Schedule> {
         source_id: row.get("source_id")?,
         category: row.get("category")?,
         calendar_id: row.get("calendar_id")?,
+        event_type: row.get("event_type").unwrap_or_else(|_| "event".to_string()),
         exdates: row.get("exdates")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -71,14 +73,15 @@ pub fn create_schedule(
     source_id: Option<&str>,
     category: Option<&str>,
     calendar_id: Option<&str>,
+    event_type: &str,
 ) -> Result<Schedule, String> {
     let id = gen_id();
     let time = now();
 
     conn.execute(
-        "INSERT INTO schedules (id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, exdates, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL, ?15, ?16)",
-        params![id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, time, time],
+        "INSERT INTO schedules (id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, event_type, exdates, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, NULL, ?16, ?17)",
+        params![id, title, description, start_at, end_at, rrule, reminder, color, is_all_day, location, source_type, source_id, category, calendar_id, event_type, time, time],
     )
     .map_err(|e| format!("Failed to create schedule: {}", e))?;
 
@@ -110,6 +113,7 @@ pub fn update_schedule(
     location: Option<&str>,
     category: Option<&str>,
     calendar_id: Option<&str>,
+    event_type: Option<&str>,
 ) -> Result<Schedule, String> {
     let time = now();
 
@@ -158,6 +162,10 @@ pub fn update_schedule(
     }
     if let Some(v) = calendar_id {
         sets.push("calendar_id = ?".to_string());
+        param_values.push(Box::new(v.to_string()));
+    }
+    if let Some(v) = event_type {
+        sets.push("event_type = ?".to_string());
         param_values.push(Box::new(v.to_string()));
     }
 
@@ -214,13 +222,48 @@ pub fn delete_schedule(conn: &Connection, id: &str) -> Result<u64, String> {
     Ok(affected as u64)
 }
 
+/// 查询所有倒数日，按 start_at 升序
+pub fn list_countdowns(conn: &Connection) -> Result<Vec<Schedule>, String> {
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {} FROM schedules WHERE event_type = 'countdown' ORDER BY start_at ASC",
+            SCHEDULE_COLUMNS
+        ))
+        .map_err(|e| format!("Failed to prepare list_countdowns: {}", e))?;
+
+    let rows = stmt
+        .query_map([], schedule_from_row)
+        .map_err(|e| format!("Failed to query countdowns: {}", e))?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row.map_err(|e| format!("Failed to read countdown row: {}", e))?);
+    }
+    Ok(results)
+}
+
 /// 按时间范围查询日程（含 rrule 展开 + 任务合并）
-/// range_start 和 range_end 为 ISO8601 格式
+/// range_start 和 range_end 支持两种格式：
+///   - YYYY-MM-DD（AI 工具传入）
+///   - 完整 RFC3339/ISO8601（前端页面传入）
 pub fn list_schedules_in_range(
     conn: &Connection,
     range_start: &str,
     range_end: &str,
 ) -> Result<Vec<Schedule>, String> {
+    // 日期格式标准化：YYYY-MM-DD → YYYY-MM-DDT00:00:00+08:00
+    // 否则 expand_weekly 等函数 parse_from_rfc3339 会失败，重复日程静默丢失
+    // 注意：AI 传入的 end_date 语义是"查到哪天"（含当天），但展开用 < 比较，
+    // 所以 bare date 的 end 要 +1 天，确保当天事件不被排除
+    let is_end_bare = !range_end.contains('T');
+    let rs = normalize_date_str(range_start);
+    let mut re = normalize_date_str(range_end);
+    if is_end_bare {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&re) {
+            re = (dt + chrono::Duration::days(1)).to_rfc3339();
+        }
+    }
+
     // 1. 查询 schedules 表中可能命中的事件
     //    - 无重复事件：start_at 在范围内
     //    - 有重复事件（rrule 不为空）：start_at 在 range_end 之前（可能向后展开进范围）
@@ -232,7 +275,7 @@ pub fn list_schedules_in_range(
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let base_schedules: Vec<Schedule> = stmt
-        .query_map(params![range_end], schedule_from_row)
+        .query_map(params![&re], schedule_from_row)
         .map_err(|e| format!("Failed to query schedules: {}", e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Failed to collect schedules: {}", e))?;
@@ -249,13 +292,13 @@ pub fn list_schedules_in_range(
 
     for sched in base_schedules {
         if let Some(ref rrule_str) = sched.rrule {
-            // 重复事件：展开实例
+            // 重复事件：展开实例（使用标准化后的日期，确保 RFC3339 解析成功）
             let exdates = parse_exdates(&sched.exdates);
-            let instances = expand_rrule(&sched, rrule_str, range_start, range_end, &exdates);
+            let instances = expand_rrule(&sched, rrule_str, &rs, &re, &exdates);
             results.extend(instances);
         } else {
             // 普通事件：检查是否在范围内
-            if sched.start_at.as_str() < range_end {
+            if sched.start_at.as_str() >= rs.as_str() && sched.start_at.as_str() < re.as_str() {
                 results.push(sched);
             }
         }
@@ -272,7 +315,7 @@ pub fn list_schedules_in_range(
         .map_err(|e| format!("Failed to prepare task query: {}", e))?;
 
     let task_rows = task_stmt
-        .query_map(params![range_start, range_end], |row| {
+        .query_map(params![&rs, &re], |row| {
             Ok((
                 row.get::<_, String>(0)?,  // id
                 row.get::<_, String>(1)?,  // title
@@ -302,6 +345,7 @@ pub fn list_schedules_in_range(
             source_id: Some(task_id),
             category: None,
             calendar_id: None,
+            event_type: "event".to_string(),
             exdates: None,
             created_at: time.clone(),
             updated_at: time,
@@ -312,6 +356,15 @@ pub fn list_schedules_in_range(
     results.sort_by(|a, b| a.start_at.cmp(&b.start_at));
 
     Ok(results)
+}
+
+/// 将 YYYY-MM-DD 纯日期补全为 RFC3339 格式，已含时间则原样返回
+fn normalize_date_str(s: &str) -> String {
+    if s.contains('T') {
+        s.to_string()
+    } else {
+        format!("{}T00:00:00+08:00", s)
+    }
 }
 
 /// 展开 rrule 为具体实例（支持 DAILY/WEEKLY/MONTHLY）
@@ -331,6 +384,7 @@ fn expand_rrule(
         "DAILY" => expand_daily(base, &rules, range_start, range_end, exdates),
         "WEEKLY" => expand_weekly(base, &rules, range_start, range_end, exdates),
         "MONTHLY" => expand_monthly(base, &rules, range_start, range_end, exdates),
+        "YEARLY" => expand_yearly(base, &rules, range_start, range_end, exdates),
         _ => Vec::new(),
     }
 }
@@ -360,6 +414,10 @@ fn expand_daily(
 
     let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
+    let interval: i64 = rules.get("INTERVAL")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
 
     let mut instances = Vec::new();
     let mut generated_count: u32 = 0;
@@ -369,7 +427,7 @@ fn expand_daily(
 
     // 跳到 range_start 之前
     while current < range_start_dt {
-        current = current + chrono::Duration::days(1);
+        current = current + chrono::Duration::days(interval);
     }
 
     while current < range_end_dt {
@@ -390,7 +448,7 @@ fn expand_daily(
         // 检查 exdates
         let date_str = current.format("%Y-%m-%d").to_string();
         if exdates.contains(&date_str) {
-            current = current + chrono::Duration::days(1);
+            current = current + chrono::Duration::days(interval);
             continue;
         }
 
@@ -399,7 +457,7 @@ fn expand_daily(
         instances.push(instance);
         generated_count += 1;
 
-        current = current + chrono::Duration::days(1);
+        current = current + chrono::Duration::days(interval);
     }
 
     instances
@@ -447,6 +505,12 @@ fn expand_weekly(
 
     // COUNT 限制
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
+
+    // INTERVAL 间隔（默认1周，每隔N周重复一次）
+    let interval: i64 = rules.get("INTERVAL")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(1)
+        .max(1);
 
     let mut instances = Vec::new();
     let mut generated_count: u32 = 0;
@@ -520,7 +584,7 @@ fn expand_weekly(
             }
         }
 
-        current_week = current_week + chrono::Duration::weeks(1);
+        current_week = current_week + chrono::Duration::weeks(interval);
     }
 
     instances
@@ -551,6 +615,10 @@ fn expand_monthly(
 
     let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
     let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
+    let interval: u32 = rules.get("INTERVAL")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
 
     let mut instances = Vec::new();
     let mut generated_count: u32 = 0;
@@ -613,10 +681,10 @@ fn expand_monthly(
             }
         }
 
-        // 下个月
-        month += 1;
-        if month > 12 {
-            month = 1;
+        // 下个间隔月
+        month += interval;
+        while month > 12 {
+            month -= 12;
             year += 1;
         }
     }
@@ -624,21 +692,111 @@ fn expand_monthly(
     instances
 }
 
-/// 根据基础事件和新时间生成实例
+/// 展开 YEARLY 重复事件
+fn expand_yearly(
+    base: &Schedule,
+    rules: &std::collections::HashMap<String, String>,
+    range_start: &str,
+    range_end: &str,
+    exdates: &[String],
+) -> Vec<Schedule> {
+    let base_start = match chrono::DateTime::parse_from_rfc3339(&base.start_at) {
+        Ok(dt) => dt,
+        Err(_) => return Vec::new(),
+    };
+
+    let range_start_dt = match chrono::DateTime::parse_from_rfc3339(range_start) {
+        Ok(dt) => dt,
+        Err(_) => return Vec::new(),
+    };
+
+    let range_end_dt = match chrono::DateTime::parse_from_rfc3339(range_end) {
+        Ok(dt) => dt,
+        Err(_) => return Vec::new(),
+    };
+
+    let until_dt = rules.get("UNTIL").and_then(|u| parse_until_datetime(u));
+    let count_limit = rules.get("COUNT").and_then(|c| c.parse::<u32>().ok());
+    let interval: u32 = rules.get("INTERVAL")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1)
+        .max(1);
+
+    let mut instances = Vec::new();
+    let mut generated_count: u32 = 0;
+
+    let month = base_start.month();
+    let day_of_month = base_start.day();
+
+    let mut year = base_start.year();
+
+    loop {
+        let instance_opt = chrono::NaiveDate::from_ymd_opt(year, month, day_of_month);
+        let instance_date = match instance_opt {
+            Some(d) => d,
+            None => {
+                // 闰年问题（如 2/29 在非闰年），跳过这一年
+                year += interval as i32;
+                continue;
+            }
+        };
+
+        let instance_start = instance_date
+            .and_time(base_start.time())
+            .and_local_timezone(chrono::Local)
+            .earliest()
+            .unwrap_or_else(|| chrono::Local::now());
+
+        if instance_start >= range_end_dt {
+            break;
+        }
+
+        if let Some(ref until) = until_dt {
+            if instance_start > *until {
+                break;
+            }
+        }
+
+        if let Some(count) = count_limit {
+            if generated_count >= count {
+                break;
+            }
+        }
+
+        if instance_start >= base_start && instance_start >= range_start_dt {
+            let date_str = instance_start.format("%Y-%m-%d").to_string();
+            if !exdates.contains(&date_str) {
+                let instance = make_instance(base, &instance_start);
+                instances.push(instance);
+                generated_count += 1;
+            }
+        }
+
+        year += interval as i32;
+    }
+
+    instances
+}
 fn make_instance<Tz: chrono::TimeZone>(base: &Schedule, instance_start: &chrono::DateTime<Tz>) -> Schedule
 where
     Tz::Offset: std::fmt::Display,
 {
     let date_str = instance_start.format("%Y-%m-%d").to_string();
 
-    // 将 instance_start 的日期与 base.start_at 的时间合并，保留原始时段
+    // 将 instance_start 的日期与 base.start_at 的时间合并，保留原始时段和时区
+    // 注意：用 naive_local() 取日期 + bs.offset() 重建，避免 UTC 转换导致日期偏移
     let base_start = chrono::DateTime::parse_from_rfc3339(&base.start_at);
     let (start_at_str, instance_end_at) = match base_start {
         Ok(bs) => {
-            let date = instance_start.naive_utc().date();
+            let offset = *bs.offset();
+            let date = instance_start.naive_local().date();
             let time = bs.time();
             let combined_naive = date.and_time(time);
-            let combined_start = chrono::Utc.from_utc_datetime(&combined_naive);
+            // 用原始事件的时区偏移重建，不用 Local（避免系统时区不确定性）
+            let combined_start = offset
+                .from_local_datetime(&combined_naive)
+                .single()
+                .unwrap_or(bs);
 
             let end_at = base.end_at.as_ref().and_then(|end| {
                 chrono::DateTime::parse_from_rfc3339(end).ok().map(|be| {
@@ -667,6 +825,7 @@ where
         source_id: base.source_id.clone(),
         category: base.category.clone(),
         calendar_id: base.calendar_id.clone(),
+        event_type: base.event_type.clone(),
         exdates: None,
         created_at: base.created_at.clone(),
         updated_at: base.updated_at.clone(),

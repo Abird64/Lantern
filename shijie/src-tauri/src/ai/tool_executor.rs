@@ -4,7 +4,7 @@ use chrono::{Datelike, Duration, Local, NaiveDate, Weekday};
 use rusqlite::Connection;
 use serde::Deserialize;
 
-use crate::db::repositories::{calendar_repo, contact_repo, journal_repo, schedule_repo, skill_repo, task_repo};
+use crate::db::repositories::{calendar_repo, contact_repo, habit_repo, journal_repo, memory_repo, schedule_repo, skill_repo, task_repo};
 use crate::db::repositories::contact_repo::ContactMethodInput;
 use crate::db::repositories::task_repo::Task;
 
@@ -95,6 +95,8 @@ struct ToolCreateScheduleArgs {
     rrule: Option<String>,
     #[serde(default)]
     reminder: Option<String>,
+    #[serde(default)]
+    event_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -231,6 +233,31 @@ struct ToolUpdateTaskArgs {
     tags: Option<String>,
 }
 
+// ── 习惯参数 ──
+
+#[derive(Debug, Deserialize)]
+struct ToolCreateHabitArgs {
+    name: String,
+    #[serde(default)]
+    frequency_type: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCheckHabitArgs {
+    #[serde(default)]
+    habit_id: Option<String>,
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
 // ========== 工具调度 ==========
 
 /// 根据工具名和参数执行对应的数据库操作，返回结果描述文本
@@ -270,6 +297,17 @@ pub fn execute_tool(
         "get_task_skills" => execute_get_task_skills(conn, arguments),
         // 工具
         "resolve_date" => execute_resolve_date(arguments),
+        // 记忆 (2)
+        "record_memory" => execute_record_memory(conn, arguments),
+        "search_memories" => execute_search_memories(conn, arguments),
+        "delete_memory" => execute_delete_memory(conn, arguments),
+        // 倒数日 (1)
+        "list_countdowns" => execute_list_countdowns(conn),
+        // 习惯 (4)
+        "list_habits" => execute_list_habits(conn),
+        "create_habit" => execute_create_habit(conn, arguments),
+        "check_habit" => execute_check_habit(conn, arguments),
+        "uncheck_habit" => execute_uncheck_habit(conn, arguments),
         _ => Err(format!("未知工具: {}", name)),
     }
 }
@@ -760,6 +798,7 @@ fn execute_create_schedule(conn: &Connection, arguments: &str) -> Result<String,
         None,
         args.category.as_deref(),
         args.calendar_id.as_deref(),
+        args.event_type.as_deref().unwrap_or("event"),
     )?;
 
     let mut result = format!("日程已创建：{}", schedule.title);
@@ -772,7 +811,73 @@ fn execute_create_schedule(conn: &Connection, arguments: &str) -> Result<String,
     if let Some(ref loc) = schedule.location {
         result.push_str(&format!("，地点：{}", loc));
     }
+    if let Some(ref rrule) = schedule.rrule {
+        result.push_str(&format!("，重复：{}", rrule_to_human(rrule)));
+    }
+    if let Some(ref reminder) = schedule.reminder {
+        if let Ok(mins) = reminder.parse::<i64>() {
+            let label = if mins >= 1440 {
+                format!("{}天前", mins / 1440)
+            } else if mins >= 60 {
+                format!("{}小时前", mins / 60)
+            } else {
+                format!("{}分钟前", mins)
+            };
+            result.push_str(&format!("，提醒：{}", label));
+        }
+    }
     Ok(result)
+}
+
+/// 将 RRULE 转换为人类可读的中文描述
+fn rrule_to_human(rrule: &str) -> String {
+    let rules: std::collections::HashMap<&str, &str> = rrule
+        .split(';')
+        .filter_map(|part| {
+            let mut split = part.splitn(2, '=');
+            Some((split.next()?, split.next()?))
+        })
+        .collect();
+
+    let freq = rules.get("FREQ").copied().unwrap_or("");
+    let interval: u32 = rules.get("INTERVAL")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
+
+    let freq_cn = match freq {
+        "DAILY" => {
+            if interval > 1 { format!("每{}天", interval) } else { "每天".to_string() }
+        }
+        "WEEKLY" => {
+            if interval > 1 { format!("每{}周", interval) } else { "每周".to_string() }
+        }
+        "MONTHLY" => {
+            if interval > 1 { format!("每{}月", interval) } else { "每月".to_string() }
+        }
+        _ => freq.to_string(),
+    };
+
+    let mut desc = freq_cn;
+
+    if let Some(byday) = rules.get("BYDAY") {
+        let days_cn: Vec<String> = byday.split(',').map(|d| {
+            match d.trim() {
+                "MO" => "一".to_string(), "TU" => "二".to_string(), "WE" => "三".to_string(),
+                "TH" => "四".to_string(), "FR" => "五".to_string(), "SA" => "六".to_string(), "SU" => "日".to_string(),
+                other => other.to_string(),
+            }
+        }).collect();
+        desc.push_str(&format!(" 周{}", days_cn.join("、")));
+    }
+
+    if let Some(until) = rules.get("UNTIL") {
+        desc.push_str(&format!("，截止 {}", until));
+    }
+    if let Some(count) = rules.get("COUNT") {
+        desc.push_str(&format!("，共{}次", count));
+    }
+
+    desc
 }
 
 // ========== 查看日程 ==========
@@ -801,13 +906,15 @@ fn execute_list_schedules(conn: &Connection, arguments: &str) -> Result<String, 
             .unwrap_or("未分类");
         let loc = s.location.as_deref().unwrap_or("");
         let loc_str = if loc.is_empty() { String::new() } else { format!("，地点：{}", loc) };
+        // 对展开实例，提取基础 ID（去掉 _{date} 后缀），方便 AI 后续操作
+        let display_id = extract_base_id(&s.id);
         result.push_str(&format!("- **{}** ({})，{}", s.title, cat, s.start_at));
         if let Some(ref end) = s.end_at {
             result.push_str(&format!(" -> {}", end));
         }
-        result.push_str(&format!("{}{}\n", loc_str, if s.is_all_day == 1 { " [全天]" } else { "" }));
+        result.push_str(&format!("{}{}  (id: `{}`)\n", loc_str, if s.is_all_day == 1 { " [全天]" } else { "" }, display_id));
     }
-    result.push_str("\n提示：你可以说[查看某天的详情]或[创建一个新的日程]。");
+    result.push_str("\n提示：你可以说[查看某天的详情]或[创建一个新的日程]。操作日程时请使用上面列出的 id。");
     Ok(result)
 }
 
@@ -838,7 +945,10 @@ fn find_schedule_by_title(
     conn: &Connection,
     query: &str,
 ) -> Result<(Vec<schedule_repo::Schedule>, usize), String> {
-    let all = schedule_repo::list_schedules_in_range(conn, "2020-01-01", "2030-12-31")?;
+    // 搜索最近一年到未来一年的范围，避免展开过多重复实例
+    let one_year_ago = (Local::now() - Duration::days(365)).format("%Y-%m-%d").to_string();
+    let one_year_later = (Local::now() + Duration::days(365)).format("%Y-%m-%d").to_string();
+    let all = schedule_repo::list_schedules_in_range(conn, &one_year_ago, &one_year_later)?;
     let tokens: Vec<&str> = query
         .split(|c: char| c.is_whitespace() || c == '\u{ff0c}' || c == '\u{3002}')
         .filter(|t| !t.is_empty())
@@ -859,9 +969,18 @@ fn find_schedule_by_title(
         .collect();
 
     scored.sort_by(|a, b| b.1.cmp(&a.1));
-    let count = scored.len();
-    let schedules: Vec<schedule_repo::Schedule> = scored.into_iter().map(|(s, _)| s).collect();
-    Ok((schedules, count))
+
+    // 按基础 ID 去重（展开实例共享同一个 base ID）
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut deduped: Vec<schedule_repo::Schedule> = Vec::new();
+    for (s, _) in scored {
+        let bid = extract_base_id(&s.id).to_string();
+        if seen_ids.insert(bid) {
+            deduped.push(s);
+        }
+    }
+    let count = deduped.len();
+    Ok((deduped, count))
 }
 
 // ========== 更新日程 ==========
@@ -870,11 +989,11 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
     let args: ToolUpdateScheduleArgs = serde_json::from_str(arguments)
         .map_err(|e| format!("update_schedule 参数解析失败: {}", e))?;
 
-    let schedule_id: String;
+    let raw_schedule_id: String;
 
     if let Some(ref id) = args.id {
         if !id.is_empty() {
-            schedule_id = id.clone();
+            raw_schedule_id = id.clone();
         } else {
             return Err("id 不能为空".to_string());
         }
@@ -896,13 +1015,16 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
                 count, names.join("")
             ));
         }
-        schedule_id = schedules[0].id.clone();
+        raw_schedule_id = schedules[0].id.clone();
     } else {
         return Err("请提供 query 或 id 来指定要修改的日程".to_string());
     }
 
+    // 处理展开实例 ID：提取基础 ID（去掉 _{date} 后缀）
+    let schedule_id = extract_base_id(&raw_schedule_id);
+
     let updated = schedule_repo::update_schedule(
-        conn, &schedule_id,
+        conn, schedule_id,
         args.title.as_deref(),
         args.description.as_deref(),
         args.start_at.as_deref(),
@@ -912,6 +1034,7 @@ fn execute_update_schedule(conn: &Connection, arguments: &str) -> Result<String,
         args.location.as_deref(),
         args.category.as_deref(),
         args.calendar_id.as_deref(),
+        None,
     )?;
 
     Ok(format!("日程已更新：{}，开始时间：{}", updated.title, updated.start_at))
@@ -923,12 +1046,13 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
     let args: ToolQueryOrIdArgs = serde_json::from_str(arguments)
         .map_err(|e| format!("delete_schedule 参数解析失败: {}", e))?;
 
-    // 如果有 id，直接删除
+    // 如果有 id，直接删除（处理展开实例 ID）
     if let Some(ref id) = args.id {
         if !id.is_empty() {
-            let schedule = schedule_repo::get_schedule(conn, id)?;
+            let base_id = extract_base_id(id);
+            let schedule = schedule_repo::get_schedule(conn, base_id)?;
             let title = schedule.title.clone();
-            schedule_repo::delete_schedule(conn, id)?;
+            schedule_repo::delete_schedule(conn, base_id)?;
             return Ok(format!("日程已删除：{}", title));
         }
     }
@@ -947,7 +1071,8 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
     if count > 1 {
         let names: Vec<String> = schedules.iter().take(5).map(|s| {
             let date = &s.start_at[..s.start_at.len().min(16)];
-            format!("\n- {} (ID: {}, {})", s.title, s.id, date)
+            let base_id = extract_base_id(&s.id);
+            format!("\n- {} (ID: {}, {})", s.title, base_id, date)
         }).collect();
         return Err(format!(
             "找到{}个匹配[{}]的日程：{}\n\n请告诉用户是哪一个，然后用对应的 id 重新调用 delete_schedule。",
@@ -957,7 +1082,8 @@ fn execute_delete_schedule(conn: &Connection, arguments: &str) -> Result<String,
 
     let s = &schedules[0];
     let title = s.title.clone();
-    schedule_repo::delete_schedule(conn, &s.id)?;
+    let base_id = extract_base_id(&s.id);
+    schedule_repo::delete_schedule(conn, base_id)?;
     Ok(format!("日程已删除：{}", title))
 }
 
@@ -1014,7 +1140,7 @@ fn execute_save_journal(conn: &Connection, app_data_dir: Option<&Path>, argument
     )?;
 
     journal_repo::update_journal_metadata(
-        conn, &journal.id, None, args.mood.as_deref(), word_count,
+        conn, &journal.id, None, args.mood.as_deref(), args.tags.as_deref(), word_count,
     )?;
 
     Ok(format!("{} 的日记已保存（{}字）", args.date, word_count))
@@ -1165,7 +1291,16 @@ fn execute_list_contacts(conn: &Connection, arguments: &str) -> Result<String, S
     for (group, members) in &groups {
         result.push_str(&format!("**{}** ({}人)\n", group, members.len()));
         for m in members {
-            result.push_str(&format!("  - {}\n", m.name));
+            let birthday = match (m.birthday_month, m.birthday_day) {
+                (Some(month), Some(day)) => {
+                    let cal = m.birthday_calendar.as_deref().unwrap_or("solar");
+                    let cal_label = if cal == "lunar" { "农历" } else { "" };
+                    let year_str = m.birthday_year.map(|y| format!("{}年", y)).unwrap_or_default();
+                    format!("，生日：{}{}{}月{}日", cal_label, year_str, month, day)
+                }
+                _ => String::new(),
+            };
+            result.push_str(&format!("  - {}{}\n", m.name, birthday));
         }
     }
     Ok(result)
@@ -1362,6 +1497,22 @@ fn status_cn(status: &str) -> &str {
         "cancelled" => "已取消",
         _ => status,
     }
+}
+
+/// 从展开实例 ID ({base}_{YYYY-MM-DD}) 中提取基础 ID
+fn extract_base_id(id: &str) -> &str {
+    // 检查是否匹配 {base}_{YYYY-MM-DD} 格式
+    if let Some(pos) = id.rfind('_') {
+        let suffix = &id[pos + 1..];
+        if suffix.len() == 10
+            && suffix.chars().nth(4) == Some('-')
+            && suffix.chars().nth(7) == Some('-')
+            && suffix.chars().filter(|c| *c == '-').count() == 2
+        {
+            return &id[..pos];
+        }
+    }
+    id
 }
 
 // ========== 日期解析 ==========
@@ -1771,4 +1922,336 @@ fn regex_lite_captures(pattern: &str, text: &str) -> Option<(String, String)> {
     }
 
     None
+}
+
+// ========== 记忆工具 ==========
+
+const VALID_MEMORY_TYPES: &[&str] = &[
+    "identity", "interest", "taste", "habit", "personality",
+    "relationship", "status", "goal", "event", "other",
+];
+
+fn memory_type_label(memory_type: &str) -> &str {
+    match memory_type {
+        "identity" => "身份信息",
+        "interest" => "兴趣爱好",
+        "taste" => "口味偏好",
+        "habit" => "日常习惯",
+        "personality" => "性格特点",
+        "relationship" => "人际关系",
+        "status" => "当前状态",
+        "goal" => "近期目标",
+        "event" => "重要事件",
+        "other" => "其他",
+        _ => "未知",
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolRecordMemoryArgs {
+    content: String,
+    memory_type: String,
+    #[serde(default)]
+    source_text: Option<String>,
+}
+
+fn execute_record_memory(conn: &mut Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolRecordMemoryArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("record_memory 参数解析失败: {}", e))?;
+
+    // 验证 memory_type
+    if !VALID_MEMORY_TYPES.contains(&args.memory_type.as_str()) {
+        return Err(format!(
+            "无效的记忆类型: {}。有效类型: {}",
+            args.memory_type,
+            VALID_MEMORY_TYPES.join(", ")
+        ));
+    }
+
+    // 去重检查：搜索已有记忆中是否有内容高度相似的
+    let existing = memory_repo::list_memories(conn, None).unwrap_or_default();
+    for m in &existing {
+        // 子串包含检查
+        if m.content.contains(&args.content) || args.content.contains(&m.content) {
+            return Ok(format!(
+                "小本本中已有类似记忆：[{}] \"{}\"。跳过重复记录。",
+                memory_type_label(&m.memory_type),
+                m.content
+            ));
+        }
+    }
+
+    let memory = memory_repo::create_memory(
+        conn,
+        &args.content,
+        &args.memory_type,
+        args.source_text.as_deref(),
+        None,
+    )?;
+
+    Ok(format!(
+        "已记入小本本：[{}] {}",
+        memory_type_label(&memory.memory_type),
+        memory.content
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolSearchMemoriesArgs {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    memory_type: Option<String>,
+}
+
+fn execute_search_memories(conn: &Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolSearchMemoriesArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("search_memories 参数解析失败: {}", e))?;
+
+    // 验证 memory_type（如果提供）
+    if let Some(ref t) = args.memory_type {
+        if !VALID_MEMORY_TYPES.contains(&t.as_str()) {
+            return Err(format!(
+                "无效的记忆类型: {}。有效类型: {}",
+                t,
+                VALID_MEMORY_TYPES.join(", ")
+            ));
+        }
+    }
+
+    let memories = match &args.query {
+        Some(q) if !q.trim().is_empty() => {
+            memory_repo::search_memories(conn, q, args.memory_type.as_deref())?
+        }
+        _ => memory_repo::list_memories(conn, args.memory_type.as_deref())?,
+    };
+
+    if memories.is_empty() {
+        let hint = match (&args.query, &args.memory_type) {
+            (Some(q), Some(t)) => {
+                format!("小本本中还没有匹配[{}]的{}类记忆。", q, memory_type_label(t))
+            }
+            (Some(q), _) => format!("小本本中还没有匹配[{}]的记忆。", q),
+            (_, Some(t)) => format!("小本本中还没有{}类记忆。", memory_type_label(t)),
+            _ => "小本本还是空的。当你在对话中了解到值得记住的信息时，我会帮你记下来。".to_string(),
+        };
+        return Ok(hint);
+    }
+
+    let mut result = format!("小本本中找到{}条记忆：\n\n", memories.len());
+    for m in &memories {
+        let label = memory_type_label(&m.memory_type);
+        let time = &m.created_at[..m.created_at.len().min(16)];
+        result.push_str(&format!("- [{}] {}（{}）\n", label, m.content, time));
+    }
+    result.push_str("\n提示：你可以说「帮我记住xxx」来添加新记忆。");
+    Ok(result)
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolDeleteMemoryArgs {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+}
+
+fn execute_delete_memory(conn: &Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolDeleteMemoryArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("delete_memory 参数解析失败: {}", e))?;
+
+    // 有 id 直接精确删除
+    if let Some(ref id) = args.id {
+        if !id.is_empty() {
+            let memory = memory_repo::get_memory(conn, id)?;
+            let content = memory.content.clone();
+            memory_repo::delete_memory(conn, id)?;
+            return Ok(format!("已从小本本中删除记忆：{}", content));
+        }
+    }
+
+    let query = args.query.as_deref().unwrap_or("");
+    if query.is_empty() {
+        return Err("请提供 id 或 query 来指定要删除的记忆".to_string());
+    }
+
+    let results = memory_repo::search_memories(conn, query, None)?;
+
+    if results.is_empty() {
+        return Ok(format!("小本本中没有找到匹配[{}]的记忆。", query));
+    }
+
+    if results.len() == 1 {
+        let m = &results[0];
+        let content = m.content.clone();
+        memory_repo::delete_memory(conn, &m.id)?;
+        return Ok(format!("已从小本本中删除记忆：{}", content));
+    }
+
+    // 多条匹配，列出让用户选
+    let mut msg = format!("找到{}条匹配[{}]的记忆，请告诉用户具体要删哪一条，然后用对应的 id 重新调用 delete_memory：\n\n", results.len(), query);
+    for m in &results {
+        let label = memory_type_label(&m.memory_type);
+        msg.push_str(&format!("- [{}] {} (id: {})\n", label, m.content, m.id));
+    }
+    Err(msg)
+}
+
+// ========== 倒数日工具 ==========
+
+fn execute_list_countdowns(conn: &Connection) -> Result<String, String> {
+    let countdowns = schedule_repo::list_countdowns(conn)?;
+
+    if countdowns.is_empty() {
+        return Ok("暂无倒数日。告诉用户可以创建一个倒数日来追踪重要日期。".to_string());
+    }
+
+    let today = Local::now().date_naive();
+    let mut result = format!("共有{}个倒数日：\n\n", countdowns.len());
+
+    for (i, cd) in countdowns.iter().enumerate() {
+        let days_info = if let Ok(target) = NaiveDate::parse_from_str(&cd.start_at[..10], "%Y-%m-%d") {
+            let diff = (target - today).num_days();
+            if diff > 0 {
+                format!("还有{}天", diff)
+            } else if diff == 0 {
+                "就是今天！".to_string()
+            } else {
+                format!("已过{}天", -diff)
+            }
+        } else {
+            cd.start_at[..10].to_string()
+        };
+
+        result.push_str(&format!("{}. {} — {} ({})\n", i + 1, cd.title, &cd.start_at[..10], days_info));
+    }
+
+    Ok(result)
+}
+
+// ========== 习惯工具 ==========
+
+fn execute_list_habits(conn: &Connection) -> Result<String, String> {
+    let habits = habit_repo::get_all_streaks(conn)?;
+
+    if habits.is_empty() {
+        return Ok("暂无习惯。告诉用户可以创建一个习惯开始打卡。".to_string());
+    }
+
+    let mut result = format!("共有{}个习惯：\n\n", habits.len());
+
+    for (i, hws) in habits.iter().enumerate() {
+        let habit = &hws.habit;
+        let icon = habit.icon.as_deref().unwrap_or("");
+        let freq = match habit.frequency_type.as_str() {
+            "daily" => "每天",
+            "weekly" => "每周",
+            _ => "自定义",
+        };
+        let checked = if hws.checked_today { "✅ 今日已打卡" } else { "⬜ 今日未打卡" };
+        let streak_info = if hws.streak > 0 {
+            format!("连续{}天", hws.streak)
+        } else {
+            "暂无连续".to_string()
+        };
+
+        result.push_str(&format!("{}. {}{} — {}，{}，{}\n", i + 1, icon, habit.name, freq, streak_info, checked));
+    }
+
+    Ok(result)
+}
+
+fn execute_create_habit(conn: &Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolCreateHabitArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("create_habit 参数解析失败: {}", e))?;
+
+    let freq_type = args.frequency_type.as_deref().unwrap_or("daily");
+
+    let habit = habit_repo::create_habit(
+        conn,
+        &args.name,
+        args.icon.as_deref(),
+        args.color.as_deref(),
+        freq_type,
+        None,
+        None,
+        None,
+        5,
+    )?;
+
+    let mut result = format!("习惯已创建：{}", habit.name);
+    if let Some(ref icon) = habit.icon {
+        result.push_str(&format!(" {}", icon));
+    }
+    let freq = match habit.frequency_type.as_str() {
+        "daily" => "每天",
+        "weekly" => "每周",
+        _ => "自定义",
+    };
+    result.push_str(&format!("，频率：{}", freq));
+
+    Ok(result)
+}
+
+fn find_habit_by_query(conn: &Connection, habit_id: &Option<String>, query: &Option<String>) -> Result<habit_repo::Habit, String> {
+    if let Some(ref id) = habit_id {
+        if !id.is_empty() {
+            return habit_repo::get_habit(conn, id);
+        }
+    }
+
+    let q = query.as_deref().ok_or("请提供 habit_id 或 query 来指定习惯")?;
+    if q.is_empty() {
+        return Err("请提供 habit_id 或 query 来指定习惯".to_string());
+    }
+
+    let habits = habit_repo::list_habits(conn)?;
+    let q_lower = q.to_lowercase();
+
+    let matches: Vec<&habit_repo::Habit> = habits.iter()
+        .filter(|h| h.name.to_lowercase().contains(&q_lower))
+        .collect();
+
+    match matches.len() {
+        0 => Err(format!("没有找到名称包含[{}]的习惯", q)),
+        1 => Ok(matches[0].clone()),
+        _ => {
+            let mut msg = format!("找到{}个匹配[{}]的习惯，请告诉用户具体是哪一个，然后用对应的 habit_id 重新调用：\n\n", matches.len(), q);
+            for h in &matches {
+                msg.push_str(&format!("- {} (id: {})\n", h.name, h.id));
+            }
+            Err(msg)
+        }
+    }
+}
+
+fn execute_check_habit(conn: &Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolCheckHabitArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("check_habit 参数解析失败: {}", e))?;
+
+    let habit = find_habit_by_query(conn, &args.habit_id, &args.query)?;
+    let date_str = args.date.as_deref();
+
+    let record = habit_repo::check_habit(conn, &habit.id, date_str, args.note.as_deref())?;
+
+    let icon = habit.icon.as_deref().unwrap_or("");
+    let date_display = &record.checked_at;
+    Ok(format!("打卡成功：{}{} (日期：{})", icon, habit.name, date_display))
+}
+
+fn execute_uncheck_habit(conn: &Connection, arguments: &str) -> Result<String, String> {
+    let args: ToolCheckHabitArgs = serde_json::from_str(arguments)
+        .map_err(|e| format!("uncheck_habit 参数解析失败: {}", e))?;
+
+    let habit = find_habit_by_query(conn, &args.habit_id, &args.query)?;
+    let date_str = args.date.as_deref();
+
+    let affected = habit_repo::uncheck_habit(conn, &habit.id, date_str)?;
+
+    if affected > 0 {
+        let date_display = date_str.unwrap_or("今天");
+        Ok(format!("已取消打卡：{} (日期：{})", habit.name, date_display))
+    } else {
+        Err(format!("{}在指定日期没有打卡记录", habit.name))
+    }
 }

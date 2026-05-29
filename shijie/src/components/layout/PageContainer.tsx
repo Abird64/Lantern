@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { useAppTheme } from '@/stores/themeStore';
 
 interface PageContainerProps {
   children: ReactNode;
@@ -9,12 +10,13 @@ interface PageContainerProps {
 export function PageContainer({
   children,
   className = '',
-  bgColor
+  bgColor,
 }: PageContainerProps) {
+  const appTheme = useAppTheme();
   return (
     <div
-      className={`h-screen px-4 md:px-6 lg:px-8 flex flex-col overflow-hidden ${className}`}
-      style={bgColor ? { backgroundColor: bgColor } : undefined}
+      className={`h-full px-4 md:px-6 lg:px-8 flex flex-col overflow-hidden ${className}`}
+      style={{ backgroundColor: bgColor ?? appTheme.canvas }}
     >
       {children}
     </div>

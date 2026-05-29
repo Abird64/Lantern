@@ -1,12 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Copy, StopCircle, Check, Star } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Copy, StopCircle, Check, Star, ArrowUp } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { LanternSvg } from '@/components/ui';
+import { LanternSvg, ShiningText } from '@/components/ui';
 import { ToolCallCard } from '@/components/ai/ToolCallCard';
+import { PromptPouch } from '@/components/ai/PromptPouch';
 import { useAiStore } from '@/stores/aiStore';
+import { useAppTheme } from '@/stores/themeStore';
 import { useFavoriteStore } from '@/stores/favoriteStore';
 import { parseToolCalls } from '@/utils/aiParsers';
+import { BUILTIN_PROMPTS } from '@/utils/builtinPrompts';
+import type { PromptTemplate } from '@/utils/builtinPrompts';
 import type { PageTheme } from '@/styles/theme';
 import type { RefObject, KeyboardEvent } from 'react';
 
@@ -31,7 +35,7 @@ interface ChatViewProps {
   t: PageTheme;
   input: string;
   setInput: (v: string) => void;
-  inputRef: RefObject<HTMLInputElement | null>;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   handleSend: () => Promise<void>;
   handleKeyDown: (e: KeyboardEvent) => void;
@@ -47,7 +51,21 @@ export function ChatView({
   handleSend,
   handleKeyDown,
 }: ChatViewProps) {
+  const appTheme = useAppTheme();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // 加载锦囊（内置 + 自定义）
+  const allPrompts = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('lantern_custom_prompts');
+      const custom: PromptTemplate[] = raw ? JSON.parse(raw) : [];
+      return [...BUILTIN_PROMPTS, ...custom].sort((a, b) => a.sort_order - b.sort_order);
+    } catch {
+      return [...BUILTIN_PROMPTS];
+    }
+  }, []);
+
   const {
     conversations,
     currentConversation,
@@ -110,7 +128,7 @@ export function ChatView({
                   >
                     <div className="max-w-[80%]">
                       <div
-                        className="chat-bubble px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                        className="chat-bubble markdown-body px-4 py-3 rounded-2xl text-sm leading-relaxed"
                         style={{
                           backgroundColor: isUser
                             ? `${t.accent}33`
@@ -118,7 +136,7 @@ export function ChatView({
                               ? s(0.03)
                               : s(0.08),
                           color: isUser
-                            ? 'rgba(255,255,255,0.9)'
+                            ? appTheme.ink
                             : isTool
                               ? s(0.3)
                               : s(0.8),
@@ -271,9 +289,9 @@ export function ChatView({
                                 onConfirm={() =>
                                   executeSingleToolCall(msg.id, tc.id)
                                 }
-                                onCancel={() => cancelToolCalls(msg.id)}
+                                onCancel={() => cancelToolCalls(msg.id, tc.id)}
                                 onModify={(feedback) =>
-                                  modifyToolCalls(feedback)
+                                  modifyToolCalls(feedback, msg.id, tc.id)
                                 }
                               />
                             );
@@ -288,14 +306,13 @@ export function ChatView({
             {isSending && (
               <div className="flex justify-start">
                 <div
-                  className="px-4 py-3 rounded-2xl text-sm"
+                  className="px-4 py-3 rounded-2xl"
                   style={{
                     backgroundColor: s(0.08),
-                    color: s(0.5),
                     borderBottomLeftRadius: '4px',
                   }}
                 >
-                  思考中...
+                  <ShiningText text="思考中..." />
                 </div>
               </div>
             )}
@@ -318,52 +335,116 @@ export function ChatView({
       )}
 
       {/* 底部输入区 */}
-      <div className="px-8 pb-8 pt-4 flex-shrink-0">
-        <div className="flex items-end justify-center max-w-[600px] mx-auto">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isSending ? '等待回复中...' : '说点什么...'}
-            disabled={isSending}
-            className="flex-1 h-[52px] bg-transparent text-lg font-light px-2 disabled:opacity-50 focus:outline-none transition-colors"
-            style={{
-              borderBottom: `1px solid ${s(0.25)}`,
-              color: s(0.8),
+      <div className="px-6 pb-6 pt-3 flex-shrink-0">
+        {/* 锦囊胶囊 — 聚焦时浮现 */}
+        <div
+          className="max-w-[640px] mx-auto overflow-hidden transition-all duration-300 ease-out"
+          style={{
+            maxHeight: isInputFocused ? '48px' : '0px',
+            opacity: isInputFocused ? 1 : 0,
+            marginBottom: isInputFocused ? '8px' : '0px',
+          }}
+        >
+          <PromptPouch
+            prompts={allPrompts}
+            onSelect={(p) => {
+              setInput(p.prompt);
+              inputRef.current?.focus();
             }}
           />
-          {isSending ? (
-            <button
-              onClick={stopGeneration}
-              className="h-[44px] px-5 rounded-full font-medium text-sm transition-all flex-shrink-0 ml-4 flex items-center gap-2 bg-red-500/15 text-red-400 hover:bg-red-500/25"
-            >
-              <StopCircle size={16} />
-              中断
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className="h-[44px] px-7 rounded-full font-medium text-base transition-all flex-shrink-0 ml-4"
+        </div>
+
+        <div
+          className="relative max-w-[640px] mx-auto rounded-3xl transition-shadow duration-300 group"
+          style={{
+            backgroundColor: `${appTheme.ink}0A`,
+            border: `1px solid ${appTheme.ink}14`,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.boxShadow = `0 0 0 1px ${appTheme.primary}30, 0 0 12px ${appTheme.primary}18`;
+          }}
+          onMouseLeave={(e) => {
+            if (document.activeElement !== inputRef.current) {
+              e.currentTarget.style.boxShadow = 'none';
+            }
+          }}
+        >
+          {/* 玻璃态背景 */}
+          <div
+            className="absolute inset-0 rounded-3xl pointer-events-none"
+            style={{
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+            }}
+          />
+
+          <div className="relative flex items-end">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // auto-resize
+                const ta = e.target;
+                ta.style.height = 'auto';
+                const lineHeight = 22;
+                const maxHeight = lineHeight * 4 + 16;
+                ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={isSending ? '等待回复中...' : '说点什么...'}
+              disabled={isSending}
+              rows={1}
+              className="flex-1 bg-transparent text-sm font-light pl-4 pr-2 py-3.5 resize-none overflow-y-auto disabled:opacity-50 focus:outline-none"
               style={{
-                backgroundColor: input.trim() ? s(0.15) : s(0.08),
-                color: input.trim() ? s(0.9) : s(0.4),
-                cursor: input.trim() ? 'pointer' : 'not-allowed',
+                color: appTheme.ink,
+                lineHeight: '22px',
+                maxHeight: '104px',
               }}
-              onMouseEnter={(e) => {
-                if (input.trim())
-                  e.currentTarget.style.backgroundColor = s(0.25);
+              onFocus={(e) => {
+                setIsInputFocused(true);
+                e.currentTarget.parentElement!.parentElement!.style.boxShadow = `0 0 0 1px ${appTheme.primary}40, 0 0 16px ${appTheme.primary}20`;
               }}
-              onMouseLeave={(e) => {
-                if (input.trim())
-                  e.currentTarget.style.backgroundColor = s(0.15);
+              onBlur={(e) => {
+                // 延迟隐藏，让锦囊点击事件先触发
+                setTimeout(() => {
+                  setIsInputFocused(false);
+                  e.currentTarget.parentElement!.parentElement!.style.boxShadow = 'none';
+                }, 150);
               }}
-            >
-              发送
-            </button>
-          )}
+            />
+
+            {isSending ? (
+              <button
+                onClick={stopGeneration}
+                className="flex-shrink-0 m-1.5 h-8 w-8 flex items-center justify-center rounded-full transition-colors bg-red-500/15 text-red-400 hover:bg-red-500/25"
+                title="中断生成"
+              >
+                <StopCircle size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!input.trim()}
+                className="flex-shrink-0 m-1.5 h-8 w-8 flex items-center justify-center rounded-full transition-all"
+                style={{
+                  backgroundColor: input.trim() ? appTheme.primary : `${appTheme.ink}1A`,
+                  color: input.trim() ? appTheme.onPrimary : appTheme.inkMuted48,
+                  cursor: input.trim() ? 'pointer' : 'not-allowed',
+                }}
+                onMouseEnter={(e) => {
+                  if (input.trim())
+                    e.currentTarget.style.backgroundColor = appTheme.primaryFocus;
+                }}
+                onMouseLeave={(e) => {
+                  if (input.trim())
+                    e.currentTarget.style.backgroundColor = appTheme.primary;
+                }}
+              >
+                <ArrowUp size={16} strokeWidth={2} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>

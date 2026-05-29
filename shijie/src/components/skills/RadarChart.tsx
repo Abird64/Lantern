@@ -1,5 +1,5 @@
 import { SKILL_COLORS, SKILL_ORDER } from '@/styles/theme';
-import { usePageTheme } from '@/hooks/usePageTheme';
+import { useAppTheme } from '@/stores/themeStore';
 import type { Skill } from '@/types/skill';
 
 interface RadarChartProps {
@@ -8,8 +8,8 @@ interface RadarChartProps {
 }
 
 export function RadarChart({ skills, size = 200 }: RadarChartProps) {
-  const t = usePageTheme('skills');
-  const gridStroke = t.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
+  const appTheme = useAppTheme();
+  const gridStroke = `${appTheme.ink}1F`;
   const cx = size / 2;
   const cy = size / 2;
   const radius = size * 0.35;
@@ -24,7 +24,7 @@ export function RadarChart({ skills, size = 200 }: RadarChartProps) {
     return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
   };
 
-  const levelRings: number[][] = [];
+  const levelRings: [number, number][][] = [];
   for (let l = 1; l <= levels; l++) {
     const r = (radius * l) / levels;
     levelRings.push(SKILL_ORDER.map((_, i) => getPoint(i, r)));
@@ -73,7 +73,7 @@ export function RadarChart({ skills, size = 200 }: RadarChartProps) {
           <circle key={`dot-${i}`} cx={x} cy={y} r="3" fill={SKILL_COLORS[SKILL_ORDER[i]]?.hex || '#8A6DA7'} />
         ))}
 
-        {axisLines.map(([x, y], i) => {
+        {axisLines.map((_point, i) => {
           const skillId = SKILL_ORDER[i];
           const info = SKILL_COLORS[skillId];
           const skill = skills.find((s) => s.id === skillId);
@@ -100,8 +100,8 @@ export function RadarChart({ skills, size = 200 }: RadarChartProps) {
       </svg>
 
       <div className="text-center -mt-[120px] pointer-events-none relative z-10">
-        <div className="text-[28px] font-bold" style={{ color: t.isDark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.9)' }}>{totalXp.toLocaleString()}</div>
-        <div className="text-xs" style={{ color: t.isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }}>XP</div>
+        <div className="text-[28px] font-bold" style={{ color: appTheme.ink }}>{totalXp.toLocaleString()}</div>
+        <div className="text-xs" style={{ color: appTheme.inkMuted48 }}>XP</div>
       </div>
     </div>
   );
