@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { appThemeLight, appThemeDark, appThemeLightHelpers, appThemeDarkHelpers, type AppTheme, type AppThemeHelpers } from '@/styles/theme';
+export { withAlpha } from '@/styles/theme';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -24,6 +25,8 @@ export const useThemeStore = create<ThemeState>()(
         // 页面加载时恢复 body class
         if (state?.mode === 'dark') {
           document.body.classList.add('dark');
+        } else {
+          document.body.classList.add('light');
         }
       },
     },
@@ -33,8 +36,10 @@ export const useThemeStore = create<ThemeState>()(
 function applyBodyClass(mode: ThemeMode) {
   if (mode === 'dark') {
     document.body.classList.add('dark');
+    document.body.classList.remove('light');
   } else {
     document.body.classList.remove('dark');
+    document.body.classList.add('light');
   }
 }
 

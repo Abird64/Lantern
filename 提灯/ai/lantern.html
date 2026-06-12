@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>提灯</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .lantern-container {
+            position: relative;
+            width: 400px;
+            height: 500px;
+        }
+
+        /* 火焰动画 */
+        @keyframes flameFlicker {
+            0%, 100% {
+                transform: scaleY(1) scaleX(1);
+                opacity: 0.9;
+            }
+            25% {
+                transform: scaleY(1.05) scaleX(0.97);
+                opacity: 1;
+            }
+            50% {
+                transform: scaleY(0.97) scaleX(1.03);
+                opacity: 0.85;
+            }
+            75% {
+                transform: scaleY(1.03) scaleX(0.98);
+                opacity: 0.95;
+            }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% {
+                opacity: 0.6;
+            }
+            50% {
+                opacity: 0.9;
+            }
+        }
+
+        .flame {
+            animation: flameFlicker 1.2s ease-in-out infinite;
+            transform-origin: center bottom;
+        }
+
+        .lantern-glow {
+            animation: glowPulse 2s ease-in-out infinite;
+        }
+
+        /* 眼睛 - 简单的竖线 */
+        .eye-line {
+            transition: none;
+        }
+
+        /* 眨眼动画 - 通过变短实现 */
+        @keyframes eyeBlink {
+            0%, 45%, 55%, 100% {
+                opacity: 0.9;
+            }
+            50% {
+                opacity: 0.3;
+                stroke-width: 5;
+            }
+        }
+
+        .eye-left.blinking, .eye-right.blinking {
+            animation: eyeBlink 0.25s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="lantern-container">
+        <svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <!-- 裁剪圆环底部 -->
+                <clipPath id="ringClip">
+                    <rect x="0" y="0" width="400" height="155" />
+                </clipPath>
+
+                <!-- 灯光光晕 -->
+                <radialGradient id="lanternGlow" cx="50%" cy="65%" r="35%">
+                    <stop offset="0%" style="stop-color:#5a9fd9;stop-opacity:0.5" />
+                    <stop offset="40%" style="stop-color:#3a7ab0;stop-opacity:0.3" />
+                    <stop offset="100%" style="stop-color:#000;stop-opacity:0" />
+                </radialGradient>
+
+                <!-- 火焰渐变 - 更柔和的蓝色调 -->
+                <radialGradient id="flameGradient" cx="50%" cy="90%" r="60%">
+                    <stop offset="0%" style="stop-color:#7ab8e8;stop-opacity:0.9" />
+                    <stop offset="25%" style="stop-color:#5a9fd9;stop-opacity:0.75" />
+                    <stop offset="50%" style="stop-color:#3d8bc9;stop-opacity:0.55" />
+                    <stop offset="75%" style="stop-color:#2a6ba0;stop-opacity:0.35" />
+                    <stop offset="100%" style="stop-color:#1a4a70;stop-opacity:0.15" />
+                </radialGradient>
+
+                <linearGradient id="flameTip" x1="0%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" style="stop-color:#5a9fd9;stop-opacity:0.7" />
+                    <stop offset="40%" style="stop-color:#7ab8e8;stop-opacity:0.5" />
+                    <stop offset="70%" style="stop-color:#a8d4ff;stop-opacity:0.35" />
+                    <stop offset="100%" style="stop-color:#c8e8ff;stop-opacity:0.2" />
+                </linearGradient>
+
+                <filter id="softBlur">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" />
+                </filter>
+
+                <!-- 裁剪路径 - 限制火焰在玻璃罩内 -->
+                <clipPath id="glassClip">
+                    <path d="M145,180 L90,280 L145,430 L255,430 L310,280 L255,180 Z" />
+                </clipPath>
+            </defs>
+
+            <!-- 背景光晕 -->
+            <ellipse cx="200" cy="290" rx="100" ry="120" fill="url(#lanternGlow)" class="lantern-glow"/>
+
+            <!-- 灯体内容（火焰和眼睛）-->
+            <g clip-path="url(#glassClip)">
+                <!-- 火焰主体 - 向左偏移 -->
+                <g transform="translate(-15, 0)">
+                    <g class="flame" id="flame">
+                    <!-- 主火焰体 - 居中 -->
+                    <path d="M155,430
+                             Q135,420 128,400
+                             Q122,380 128,360
+                             Q138,340 152,320
+                             Q168,300 185,280
+                             Q198,260 208,240
+                             Q215,220 218,210
+                             Q222,220 228,240
+                             Q238,260 255,280
+                             Q272,300 288,320
+                             Q302,340 308,360
+                             Q315,380 308,400
+                             Q300,420 285,430
+                             Z"
+                          fill="url(#flameGradient)" filter="url(#softBlur)"/>
+
+                    <!-- 左侧火舌 -->
+                    <path d="M152,420
+                             Q135,380 142,340
+                             Q148,300 162,260
+                             Q175,220 185,180
+                             Q195,210 188,240
+                             Q182,280 168,320
+                             Q155,360 162,400
+                             Q168,420 175,430
+                             Z"
+                          fill="url(#flameTip)" opacity="0.7" filter="url(#softBlur)"/>
+
+                    <!-- 左中火舌 -->
+                    <path d="M182,415
+                             Q172,370 178,330
+                             Q188,290 198,250
+                             Q208,210 215,190
+                             Q222,210 215,250
+                             Q205,290 195,330
+                             Q185,370 195,415
+                             Z"
+                          fill="url(#flameTip)" opacity="0.65" filter="url(#softBlur)"/>
+
+                    <!-- 中央主火舌 - 较低 -->
+                    <path d="M202,420
+                             Q195,360 198,300
+                             Q205,250 208,200
+                             Q215,170 222,150
+                             Q228,170 235,200
+                             Q242,250 245,300
+                             Q248,360 245,420
+                             Z"
+                          fill="#a8d4ff" opacity="0.5" filter="url(#softBlur)"/>
+
+                    <!-- 右中火舌 -->
+                    <path d="M235,415
+                             Q245,370 238,330
+                             Q228,290 218,250
+                             Q208,210 202,190
+                             Q188,210 195,250
+                             Q212,290 222,330
+                             Q242,370 232,415
+                             Z"
+                          fill="url(#flameTip)" opacity="0.65" filter="url(#softBlur)"/>
+
+                    <!-- 右侧火舌 -->
+                    <path d="M272,430
+                             Q295,420 302,400
+                             Q308,360 302,320
+                             Q288,280 275,240
+                             Q262,210 255,180
+                             Q238,210 245,240
+                             Q258,280 268,320
+                             Q288,360 282,400
+                             Z"
+                          fill="url(#flameTip)" opacity="0.7" filter="url(#softBlur)"/>
+                </g>
+                </g>
+
+                <!-- 眼睛 - 两条简单的竖线 -->
+                <g id="eyesContainer">
+                    <!-- 左眼 - 圆头竖线 -->
+                    <line id="leftEye" class="eye-line eye-left" x1="165" y1="275" x2="165" y2="285"
+                          stroke="#c8e8ff" stroke-width="12" stroke-linecap="round" opacity="0.9"/>
+                    <!-- 右眼 - 圆头竖线 -->
+                    <line id="rightEye" class="eye-line eye-right" x1="235" y1="275" x2="235" y2="285"
+                          stroke="#c8e8ff" stroke-width="12" stroke-linecap="round" opacity="0.9"/>
+                </g>
+            </g>
+
+            <!-- 灯的外框 -->
+            <!-- 顶部提手圆环 - 放大并在底部被横条截断 -->
+            <g clip-path="url(#ringClip)">
+                <ellipse cx="200" cy="110" rx="75" ry="75" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+                <ellipse cx="200" cy="110" rx="58" ry="58" fill="none" stroke="#e8e8e8" stroke-width="2"/>
+            </g>
+
+            <!-- 顶部连接方块（短横条） -->
+            <rect x="175" y="140" width="50" height="15" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+
+            <!-- 顶部横条（长横条，截断圆环底部约1/4处） -->
+            <rect x="130" y="155" width="140" height="25" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+
+            <!-- 灯体外框 - 外轮廓（类似原图的流畅两条线） -->
+            <path d="M130,180 L70,280 L130,430" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+            <path d="M270,180 L330,280 L270,430" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+
+            <!-- 灯体外框 - 内轮廓（直接延伸到底部横条） -->
+            <path d="M145,180 L90,280 L145,430" fill="none" stroke="#c0c0c0" stroke-width="2"/>
+            <path d="M255,180 L310,280 L255,430" fill="none" stroke="#c0c0c0" stroke-width="2"/>
+
+            <!-- 玻璃罩边框线（只保留顶部连接） -->
+            <line x1="130" y1="180" x2="145" y2="180" stroke="#e8e8e8" stroke-width="3"/>
+            <line x1="255" y1="180" x2="270" y2="180" stroke="#e8e8e8" stroke-width="3"/>
+
+            <!-- 灯体底部横条 -->
+            <rect x="120" y="430" width="160" height="18" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+            <rect x="100" y="448" width="200" height="22" fill="none" stroke="#e8e8e8" stroke-width="3"/>
+        </svg>
+    </div>
+
+    <script>
+        const leftEye = document.getElementById('leftEye');
+        const rightEye = document.getElementById('rightEye');
+
+        // 眼睛中心位置
+        const leftEyeCenter = { x: 180, y: 290 };
+        const rightEyeCenter = { x: 240, y: 290 };
+        // 两眼之间的中点
+        const eyesMidpoint = { x: (leftEyeCenter.x + rightEyeCenter.x) / 2, y: leftEyeCenter.y };
+
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+
+        // 鼠标移动事件
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            updateEyes();
+        });
+
+        // 触摸移动事件
+        document.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+                updateEyes();
+            }
+        });
+
+        function updateEyes() {
+            const svgRect = document.querySelector('svg').getBoundingClientRect();
+            const scaleX = 400 / svgRect.width;
+            const scaleY = 500 / svgRect.height;
+
+            // 计算鼠标相对于SVG坐标系的位置
+            const svgMouseX = (mouseX - svgRect.left) * scaleX;
+            const svgMouseY = (mouseY - svgRect.top) * scaleY;
+
+            // 更新左眼
+            updateEyeLine(leftEye, leftEyeCenter, svgMouseX, svgMouseY);
+            // 更新右眼
+            updateEyeLine(rightEye, rightEyeCenter, svgMouseX, svgMouseY);
+        }
+
+        function updateEyeLine(eyeElement, center, mouseX, mouseY) {
+            // 计算鼠标到两眼中点的距离和角度
+            const dx = mouseX - eyesMidpoint.x;
+            const dy = mouseY - eyesMidpoint.y;
+            const distanceToMid = Math.sqrt(dx * dx + dy * dy);
+
+            // 计算鼠标方向（用于平移）
+            const angle = Math.atan2(dy, dx);
+
+            // 眼睛长度计算：
+            // - 鼠标在中点附近时最短（接近圆点，长度≈4）
+            // - 鼠标离得越远越长（最长可达25）
+            const minDist = 0;
+            const maxDist = 400;
+            const clampedDist = Math.min(distanceToMid, maxDist);
+            const distanceRatio = clampedDist / maxDist; // 0~1
+
+            // 最短4（接近圆点），最长25
+            const minLength = 4;
+            const maxLength = 25;
+            const eyeLength = minLength + (distanceRatio * (maxLength - minLength));
+
+            // 平移量：X轴和Y轴分开控制
+            const maxOffsetX = 8;
+            const maxOffsetY = 12; // 上下平移稍微多一点
+            const offsetX = Math.cos(angle) * maxOffsetX * distanceRatio;
+            const offsetY = Math.sin(angle) * maxOffsetY * distanceRatio;
+
+            // 眼睛位置 = 原位置 + 平移
+            const eyeX = center.x + offsetX;
+            const eyeY = center.y + offsetY;
+
+            // 眼睛始终是竖直的，只有长短变化
+            const halfLength = eyeLength / 2;
+            const x1 = eyeX;
+            const y1 = eyeY - halfLength;
+            const x2 = eyeX;
+            const y2 = eyeY + halfLength;
+
+            // 更新线条
+            eyeElement.setAttribute('x1', x1);
+            eyeElement.setAttribute('y1', y1);
+            eyeElement.setAttribute('x2', x2);
+            eyeElement.setAttribute('y2', y2);
+        }
+
+        // 眨眼动画
+        function blink() {
+            leftEye.classList.add('blinking');
+            rightEye.classList.add('blinking');
+            setTimeout(() => {
+                leftEye.classList.remove('blinking');
+                rightEye.classList.remove('blinking');
+            }, 250);
+
+            // 随机下一次眨眼时间（3-7秒）
+            setTimeout(blink, 3000 + Math.random() * 4000);
+        }
+
+        // 开始眨眼
+        setTimeout(blink, 3000);
+    </script>
+</body>
+</html>

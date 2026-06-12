@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import type { Schedule } from '@/types/schedule';
 
 
@@ -54,9 +54,9 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
     <div className="w-full rounded-2xl" style={{ backgroundColor: appTheme.canvas }}>
       <div>
       {/* 星期标题 */}
-      <div className="grid grid-cols-7" style={{ borderBottom: `1px solid ${appTheme.primary}33` }}>
+      <div className="grid grid-cols-7" style={{ borderBottom: `1px solid ${withAlpha(appTheme.primary, 0.2)}` }}>
         {weekDayNames.map((name) => (
-          <div key={name} className="py-2 text-center text-xs" style={{ color: `${appTheme.ink}80` }}>
+          <div key={name} className="py-2 text-center text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>
             {name}
           </div>
         ))}
@@ -78,9 +78,9 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
                 !isCurrentMonth ? 'opacity-40' : ''
               }`}
               style={{
-                borderBottom: `1px solid ${appTheme.primary}1A`,
-                borderRight: `1px solid ${appTheme.primary}1A`,
-                backgroundColor: hoveredCellIdx === idx ? `${appTheme.primary}0D` : undefined,
+                borderBottom: `1px solid ${withAlpha(appTheme.primary, 0.1)}`,
+                borderRight: `1px solid ${withAlpha(appTheme.primary, 0.1)}`,
+                backgroundColor: hoveredCellIdx === idx ? `${withAlpha(appTheme.primary, 0.05)}` : undefined,
               }}
               onMouseEnter={() => setHoveredCellIdx(idx)}
               onMouseLeave={() => setHoveredCellIdx(null)}
@@ -94,50 +94,47 @@ export function MonthView({ year, month, schedules, onEventClick, onDayClick }: 
                   }`}
                   style={isToday
                     ? { backgroundColor: appTheme.primary, color: appTheme.ink }
-                    : { color: `${appTheme.ink}B3` }
+                    : { color: `${withAlpha(appTheme.ink, 0.7)}` }
                   }
                 >
                   {day.getDate()}
                 </span>
               </div>
 
-              {/* 事件列表 */}
-              <div className="space-y-0.5">
+              {/* 事件圆点指示器 */}
+              <div className="flex items-center gap-1 flex-wrap px-0.5">
                 {visibleEvents.map((event) => {
-                  const bgColor = event.color || appTheme.primary;
+                  const dotColor = event.color || appTheme.primary;
                   const isTaskSync = event.source_type === 'task_sync';
 
                   return (
-                    <div
+                    <span
                       key={event.id}
-                      className="rounded px-1 py-0.5 text-[10px] break-all cursor-pointer transition-opacity hover:opacity-80"
-                      style={{
-                        backgroundColor: isTaskSync ? 'transparent' : bgColor,
-                        border: isTaskSync ? `1px dashed ${bgColor}` : 'none',
-                        color: isTaskSync ? bgColor : '#FFF',
-                        opacity: isTaskSync ? 0.7 : 1,
-                      }}
+                      title={event.title}
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0 cursor-pointer transition-transform hover:scale-150"
+                      style={isTaskSync
+                        ? { backgroundColor: 'transparent', border: `1px dashed ${dotColor}` }
+                        : { backgroundColor: dotColor }
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         onEventClick(event);
                       }}
-                    >
-                      {event.title}
-                    </div>
+                    />
                   );
                 })}
 
                 {hiddenCount > 0 && (
-                  <div className="text-[10px] text-center" style={{ color: `${appTheme.ink}80` }}>
-                    +{hiddenCount} 更多
-                  </div>
+                  <span className="text-[10px]" style={{ color: `${withAlpha(appTheme.ink, 0.45)}` }}>
+                    +{hiddenCount}
+                  </span>
                 )}
               </div>
             </div>
           );
         })}
       </div>
-      </div>{/* end min-w wrapper */}
+      </div>
     </div>
   );
 }

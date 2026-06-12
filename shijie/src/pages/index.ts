@@ -7,3 +7,6 @@ export { RelationsPage } from './Relations';
 export { MemoriesPage } from './Memories';
 export { SkillsPage } from './Skills';
 export { SettingsPage } from './Settings';
+export { DashboardPage } from './Dashboard';
+export { MeditationPage } from './Meditation';
+export { WishesPage } from './Wishes';

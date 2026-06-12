@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useAppTheme } from '@/stores/themeStore';
+import { Select } from '@/components/ui/Select';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import type { CreateScheduleInput } from '@/types/schedule';
 
@@ -8,6 +9,7 @@ interface EventFormProps {
   defaultEnd?: string;
   onSubmit: (input: CreateScheduleInput) => void;
   onCancel: () => void;
+  isSubmitting?: boolean;
 }
 
 const repeatOptions = [
@@ -61,7 +63,7 @@ function buildRrule(repeat: string, selectedDays: string[], interval: number): s
   return parts.join(';');
 }
 
-export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: EventFormProps) {
+export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel, isSubmitting }: EventFormProps) {
   const appTheme = useAppTheme();
   const { calendars } = useCalendarStore();
   const [title, setTitle] = useState('');
@@ -78,6 +80,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [isSubmitHovered, setIsSubmitHovered] = useState(false);
   const [isCancelHovered, setIsCancelHovered] = useState(false);
+  const [timeError, setTimeError] = useState<string | null>(null);
 
   // 开始时间变化时自动更新结束时间（+40 分钟）
   const handleStartChange = (val: string) => {
@@ -105,6 +108,17 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
     e.preventDefault();
     if (!title.trim()) return;
 
+    // 时间校验：结束时间必须晚于开始时间
+    if (endAt) {
+      const startDate = new Date(startAt);
+      const endDate = new Date(endAt);
+      if (endDate <= startDate) {
+        setTimeError('结束时间必须晚于开始时间');
+        return;
+      }
+    }
+    setTimeError(null);
+
     const rrule = buildRrule(repeat, selectedDays, interval);
 
     onSubmit({
@@ -123,10 +137,10 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
       onClick={onCancel}
     >
       <style>{`
-        .event-form-input::placeholder { color: ${appTheme.ink}4D; }
+        .event-form-input::placeholder { color: ${withAlpha(appTheme.ink, 0.3)}; }
       `}</style>
       <div
-        className="rounded-[18px] p-6 w-[95vw] sm:w-[380px]"
+        className="rounded-2xl p-6 w-[95vw] sm:w-[380px]"
         style={{ backgroundColor: appTheme.canvas }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -139,10 +153,10 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="日程标题"
-            className="event-form-input w-full px-4 py-3 rounded-2xl focus:outline-none text-sm"
+            className="event-form-input w-full px-4 py-3 rounded-xl focus:outline-none text-sm"
             style={{
               color: appTheme.ink,
-              border: `1px solid ${appTheme.primary}4D`,
+              border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`,
               backgroundColor: appTheme.canvasParchment,
             }}
             autoFocus
@@ -150,15 +164,15 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
 
           {/* 开始时间 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>开始时间</label>
+            <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>开始时间</label>
             <input
               type="datetime-local"
               value={startAt}
-              onChange={(e) => handleStartChange(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-2xl focus:outline-none text-sm"
+              onChange={(e) => { handleStartChange(e.target.value); setTimeError(null); }}
+              className="w-full px-4 py-2.5 rounded-xl focus:outline-none text-sm"
               style={{
                 color: appTheme.ink,
-                border: `1px solid ${appTheme.primary}4D`,
+                border: `1px solid ${timeError ? 'rgba(201,112,112,0.6)' : withAlpha(appTheme.primary, 0.3)}`,
                 backgroundColor: appTheme.canvasParchment,
               }}
             />
@@ -166,45 +180,37 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
 
           {/* 结束时间 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>结束时间</label>
+            <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>结束时间</label>
             <input
               type="datetime-local"
               value={endAt}
-              onChange={(e) => setEndAt(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-2xl focus:outline-none text-sm"
+              onChange={(e) => { setEndAt(e.target.value); setTimeError(null); }}
+              className="w-full px-4 py-2.5 rounded-xl focus:outline-none text-sm"
               style={{
                 color: appTheme.ink,
-                border: `1px solid ${appTheme.primary}4D`,
+                border: `1px solid ${timeError ? 'rgba(201,112,112,0.6)' : withAlpha(appTheme.primary, 0.3)}`,
                 backgroundColor: appTheme.canvasParchment,
               }}
             />
+            {timeError && (
+              <p className="text-xs mt-1" style={{ color: appTheme.danger }}>{timeError}</p>
+            )}
           </div>
 
           {/* 日历 */}
           <div>
-            <label className="text-xs mb-2 block" style={{ color: `${appTheme.ink}80` }}>日历</label>
-            <select
+            <label className="text-xs mb-2 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>日历</label>
+            <Select
               value={calendarId ?? ''}
-              onChange={(e) => setCalendarId(e.target.value || null)}
-              className="w-full px-3 py-2 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: appTheme.canvasParchment,
-                border: `1px solid ${appTheme.primary}4D`,
-                color: appTheme.ink,
-              }}
-            >
-              <option value="">无分类</option>
-              {calendars.map((cal) => (
-                <option key={cal.id} value={cal.id} style={{ backgroundColor: appTheme.canvas, color: appTheme.ink }}>
-                  {cal.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setCalendarId(v || null)}
+              placeholder="无分类"
+              options={calendars.map((cal) => ({ value: cal.id, label: cal.name }))}
+            />
           </div>
 
           {/* 重复规则 */}
           <div>
-            <label className="text-xs mb-2 block" style={{ color: `${appTheme.ink}80` }}>重复</label>
+            <label className="text-xs mb-2 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>重复</label>
             <div className="flex gap-2 flex-wrap">
               {repeatOptions.map((opt) => (
                 <button
@@ -220,7 +226,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
                     repeat === opt.id
                       ? { backgroundColor: appTheme.primary, color: appTheme.ink }
                       : {
-                          color: `${appTheme.ink}B2`,
+                          color: `${withAlpha(appTheme.ink, 0.7)}`,
                           backgroundColor: appTheme.canvasParchment,
                         }
                   }
@@ -233,7 +239,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
             {/* 间隔选择器：选中非 none 时显示 */}
             {repeat !== 'none' && (
               <div className="flex items-center gap-2 mt-3">
-                <span className="text-xs" style={{ color: `${appTheme.ink}99` }}>每隔</span>
+                <span className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}>每隔</span>
                 <input
                   type="number"
                   min={1}
@@ -246,11 +252,11 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
                   className="w-14 px-2 py-1 rounded-xl text-center text-sm outline-none"
                   style={{
                     color: appTheme.ink,
-                    border: `1px solid ${appTheme.primary}4D`,
+                    border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`,
                     backgroundColor: appTheme.canvasParchment,
                   }}
                 />
-                <span className="text-xs" style={{ color: `${appTheme.ink}99` }}>
+                <span className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}>
                   {intervalLabels[repeat]}
                 </span>
               </div>
@@ -273,7 +279,7 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
                       selectedDays.includes(day.id)
                         ? { backgroundColor: appTheme.primary, color: appTheme.ink }
                         : {
-                            color: `${appTheme.ink}B2`,
+                            color: `${withAlpha(appTheme.ink, 0.7)}`,
                             backgroundColor: appTheme.canvasParchment,
                           }
                     }
@@ -292,8 +298,8 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
               onClick={onCancel}
               className="px-5 py-2 rounded-full text-sm transition-colors"
               style={{
-                color: `${appTheme.ink}99`,
-                backgroundColor: isCancelHovered ? `${appTheme.ink}0D` : 'transparent',
+                color: `${withAlpha(appTheme.ink, 0.6)}`,
+                backgroundColor: isCancelHovered ? `${withAlpha(appTheme.ink, 0.05)}` : 'transparent',
               }}
               onMouseEnter={() => setIsCancelHovered(true)}
               onMouseLeave={() => setIsCancelHovered(false)}
@@ -302,9 +308,9 @@ export function EventForm({ defaultStart, defaultEnd, onSubmit, onCancel }: Even
             </button>
             <button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!title.trim() || isSubmitting}
               className="px-5 py-2 rounded-full text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              style={{ color: appTheme.ink, backgroundColor: isSubmitHovered ? `${appTheme.primary}CC` : appTheme.primary }}
+              style={{ color: appTheme.ink, backgroundColor: isSubmitHovered ? `${withAlpha(appTheme.primary, 0.8)}` : appTheme.primary }}
               onMouseEnter={() => setIsSubmitHovered(true)}
               onMouseLeave={() => setIsSubmitHovered(false)}
             >

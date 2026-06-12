@@ -1,7 +1,9 @@
 import { create } from 'zustand';
+import { listen } from '@tauri-apps/api/event';
 import type { Conversation, AiMessage } from '@/types/ai';
 import { parseToolCalls } from '@/utils/aiParsers';
 import * as aiService from '@/services/aiService';
+import { triggerSync } from '@/stores/syncStore';
 
 /** 用于中断正在进行的 AI 请求 */
 let sendAbortController: AbortController | null = null;
@@ -14,6 +16,14 @@ interface AiState {
   isSending: boolean;
   isExecuting: boolean;
   error: string | null;
+  /** 当前 AI 处理状态文本（如"正在理解..."、"正在输入中..."） */
+  aiStatus: string;
+  /** 流式接收中的内容 */
+  streamingContent: string;
+  /** 是否正在流式接收 token */
+  isStreaming: boolean;
+  /** 待发送的图片列表（base64 data URIs） */
+  pendingImages: string[];
 
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<string>;
@@ -21,6 +31,9 @@ interface AiState {
   deleteConversation: (id: string) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   stopGeneration: () => void;
+  addPendingImages: (images: string[]) => void;
+  removePendingImage: (index: number) => void;
+  clearPendingImages: () => void;
   executeToolCalls: (messageId: string) => Promise<void>;
   executeSingleToolCall: (messageId: string, toolCallId: string) => Promise<void>;
   cancelToolCalls: (messageId: string, toolCallId?: string) => Promise<void>;
@@ -36,6 +49,10 @@ export const useAiStore = create<AiState>((set, get) => ({
   isSending: false,
   isExecuting: false,
   error: null,
+  aiStatus: '',
+  streamingContent: '',
+  isStreaming: false,
+  pendingImages: [],
 
   fetchConversations: async () => {
     try {
@@ -53,6 +70,7 @@ export const useAiStore = create<AiState>((set, get) => ({
       currentConversation: conv.id,
       messages: [],
     }));
+    triggerSync();
     return conv.id;
   },
 
@@ -76,19 +94,25 @@ export const useAiStore = create<AiState>((set, get) => ({
           ? { currentConversation: null, messages: [] }
           : {}),
       }));
+      triggerSync();
     } catch (e) {
       set({ error: String(e) });
     }
   },
 
   sendMessage: async (content: string) => {
-    const { currentConversation } = get();
+    const { currentConversation, pendingImages } = get();
     if (!currentConversation) return;
+    if (!content.trim() && pendingImages.length === 0) return;
 
     // 中断之前的请求（如果有）
     sendAbortController?.abort();
     sendAbortController = new AbortController();
     const thisController = sendAbortController;
+
+    // 取出待发送的图片并清空
+    const imagesToSend = pendingImages.length > 0 ? [...pendingImages] : undefined;
+    set({ pendingImages: [] });
 
     // 乐观更新：立即显示用户消息
     const userMsg: AiMessage = {
@@ -98,16 +122,39 @@ export const useAiStore = create<AiState>((set, get) => ({
       content,
       tool_calls: null,
       tool_call_id: null,
+      images: imagesToSend ? JSON.stringify(imagesToSend) : null,
       created_at: new Date().toISOString(),
     };
     set((state) => ({
       messages: [...state.messages, userMsg],
       isSending: true,
+      isStreaming: false,
+      streamingContent: '',
+      aiStatus: '',
       error: null,
     }));
 
+    // 设置 Tauri 事件监听器
+    const unlistenStatus = await listen<string>('ai:status', (event) => {
+      if (!thisController.signal.aborted) {
+        set({ aiStatus: event.payload });
+      }
+    });
+    const unlistenToken = await listen<string>('ai:token', (event) => {
+      if (!thisController.signal.aborted) {
+        set((state) => ({
+          streamingContent: state.streamingContent + event.payload,
+          isStreaming: true,
+          aiStatus: '', // 收到 token 后清除状态文本
+        }));
+      }
+    });
+    const unlistenDone = await listen('ai:done', () => {
+      set({ isStreaming: false });
+    });
+
     try {
-      const aiReply = await aiService.sendMessage(currentConversation, content);
+      const aiReply = await aiService.sendMessage(currentConversation, content, imagesToSend);
 
       // 用户中断了，忽略结果
       if (thisController.signal.aborted) return;
@@ -115,20 +162,41 @@ export const useAiStore = create<AiState>((set, get) => ({
       set((state) => ({
         messages: [...state.messages, aiReply],
         isSending: false,
+        isStreaming: false,
+        streamingContent: '',
+        aiStatus: '',
       }));
       get().fetchConversations();
+      triggerSync();
     } catch (e) {
       if (thisController.signal.aborted) {
-        set({ isSending: false });
+        set({ isSending: false, isStreaming: false, streamingContent: '', aiStatus: '' });
         return;
       }
-      set({ error: String(e), isSending: false });
+      set({ error: String(e), isSending: false, isStreaming: false, streamingContent: '', aiStatus: '' });
+    } finally {
+      // 清理事件监听器
+      unlistenStatus();
+      unlistenToken();
+      unlistenDone();
     }
   },
 
   stopGeneration: () => {
     sendAbortController?.abort();
-    set({ isSending: false });
+    set({ isSending: false, isStreaming: false, streamingContent: '', aiStatus: '' });
+  },
+
+  addPendingImages: (images: string[]) => {
+    set((state) => ({ pendingImages: [...state.pendingImages, ...images] }));
+  },
+
+  removePendingImage: (index: number) => {
+    set((state) => ({ pendingImages: state.pendingImages.filter((_, i) => i !== index) }));
+  },
+
+  clearPendingImages: () => {
+    set({ pendingImages: [] });
   },
 
   executeToolCalls: async (messageId: string) => {

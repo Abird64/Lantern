@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface LanternSvgProps {
   className?: string;
@@ -6,15 +7,19 @@ interface LanternSvgProps {
   isDark?: boolean;
 }
 
-export function LanternSvg({ className, accentColor = '#58A968', isDark = true }: LanternSvgProps) {
-  const eyeColor = isDark ? '#5BA4E6' : '#2563EB';
-  const frameColor = isDark ? '#e8e8e8' : '#4A4A4A';
-  const frameDim = isDark ? '#c0c0c0' : '#6A6A6A';
+export function LanternSvg({ className, accentColor = '#4CAF76', isDark = true }: LanternSvgProps) {
+  const eyeColor = isDark ? '#A8E6CF' : '#2D6B4F';
+  const frameColor = isDark ? 'rgba(255,255,255,0.12)' : '#4A4A4A';
+  const frameDim = isDark ? 'rgba(255,255,255,0.08)' : '#6A6A6A';
   const leftEyeRef = useRef<SVGLineElement>(null);
   const rightEyeRef = useRef<SVGLineElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
+    // 移动端不跟踪触摸/鼠标（没有光标指针，touchmove 追踪无意义且消耗性能）
+    if (isMobile) return;
+
     const leftEye = leftEyeRef.current;
     const rightEye = rightEyeRef.current;
     const svg = svgRef.current;
@@ -26,6 +31,10 @@ export function LanternSvg({ className, accentColor = '#58A968', isDark = true }
       x: (leftEyeCenter.x + rightEyeCenter.x) / 2,
       y: leftEyeCenter.y,
     };
+
+    let pendingClientX = 0;
+    let pendingClientY = 0;
+    let rafId = 0;
 
     function updateEyeLine(
       eyeElement: SVGLineElement,
@@ -62,7 +71,8 @@ export function LanternSvg({ className, accentColor = '#58A968', isDark = true }
     }
 
     function updateEyes(clientX: number, clientY: number) {
-      const rect = svg!.getBoundingClientRect();
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
       const scaleX = 400 / rect.width;
       const scaleY = 500 / rect.height;
       const svgMouseX = (clientX - rect.left) * scaleX;
@@ -71,15 +81,23 @@ export function LanternSvg({ className, accentColor = '#58A968', isDark = true }
       updateEyeLine(rightEye!, rightEyeCenter, svgMouseX, svgMouseY);
     }
 
-    const onMouseMove = (e: MouseEvent) => updateEyes(e.clientX, e.clientY);
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        updateEyes(e.touches[0].clientX, e.touches[0].clientY);
+    // 用 rAF 节流，避免每个 mousemove 事件都触发 getBoundingClientRect + SVG 写操作
+    const scheduleUpdate = () => {
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          updateEyes(pendingClientX, pendingClientY);
+        });
       }
     };
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('touchmove', onTouchMove);
+    const onMouseMove = (e: MouseEvent) => {
+      pendingClientX = e.clientX;
+      pendingClientY = e.clientY;
+      scheduleUpdate();
+    };
+
+    document.addEventListener('mousemove', onMouseMove, { passive: true });
 
     // 眨眼
     let blinkTimer: ReturnType<typeof setTimeout>;
@@ -96,11 +114,11 @@ export function LanternSvg({ className, accentColor = '#58A968', isDark = true }
 
     return () => {
       document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('touchmove', onTouchMove);
+      cancelAnimationFrame(rafId);
       clearTimeout(blinkTimer);
       clearTimeout(startTimer);
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <>
@@ -115,6 +133,12 @@ export function LanternSvg({ className, accentColor = '#58A968', isDark = true }
         }
         .lantern-glow {
           animation: glowPulse 2s ease-in-out infinite;
+        }
+        @media (hover: none) and (pointer: coarse) {
+          .lantern-glow {
+            animation: none;
+            opacity: 0.75;
+          }
         }
         .eye-line.blinking {
           animation: eyeBlink 0.25s ease-in-out;

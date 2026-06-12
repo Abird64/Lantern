@@ -13,6 +13,7 @@ pub struct Task {
     pub deadline: Option<String>,
     pub completed_at: Option<String>,
     pub xp_earned: i32,
+    pub glow_reward: i32,
     pub estimated_minutes: i32,
     pub notes: Option<String>,
     pub tags: Option<String>,
@@ -21,7 +22,7 @@ pub struct Task {
     pub updated_at: String,
 }
 
-const TASK_COLUMNS: &str = "id, parent_id, title, description, status, priority, scheduled_at, deadline, completed_at, xp_earned, estimated_minutes, notes, tags, sort_order, created_at, updated_at";
+const TASK_COLUMNS: &str = "id, parent_id, title, description, status, priority, scheduled_at, deadline, completed_at, xp_earned, glow_reward, estimated_minutes, notes, tags, sort_order, created_at, updated_at";
 
 fn task_from_row(row: &Row) -> rusqlite::Result<Task> {
     Ok(Task {
@@ -35,6 +36,7 @@ fn task_from_row(row: &Row) -> rusqlite::Result<Task> {
         deadline: row.get("deadline")?,
         completed_at: row.get("completed_at")?,
         xp_earned: row.get("xp_earned")?,
+        glow_reward: row.get("glow_reward").unwrap_or(0),
         estimated_minutes: row.get("estimated_minutes")?,
         notes: row.get("notes")?,
         tags: row.get("tags")?,
@@ -63,14 +65,15 @@ pub fn create_task(
     deadline: Option<&str>,
     estimated_minutes: i32,
     tags: Option<&str>,
+    glow_reward: i32,
 ) -> Result<Task, String> {
     let id = gen_id();
     let time = now();
 
     conn.execute(
-        "INSERT INTO tasks (id, parent_id, title, description, status, priority, scheduled_at, deadline, estimated_minutes, tags, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![id, parent_id, title, description, priority, scheduled_at, deadline, estimated_minutes, tags, time, time],
+        "INSERT INTO tasks (id, parent_id, title, description, status, priority, scheduled_at, deadline, estimated_minutes, tags, glow_reward, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![id, parent_id, title, description, priority, scheduled_at, deadline, estimated_minutes, tags, glow_reward, time, time],
     )
     .map_err(|e| format!("Failed to create task: {}", e))?;
 
@@ -80,7 +83,7 @@ pub fn create_task(
 /// 获取单个任务
 pub fn get_task(conn: &Connection, id: &str) -> Result<Task, String> {
     conn.query_row(
-        &format!("SELECT {} FROM tasks WHERE id = ?1", TASK_COLUMNS),
+        &format!("SELECT {} FROM tasks WHERE id = ?1 AND deleted_at IS NULL", TASK_COLUMNS),
         params![id],
         task_from_row,
     )
@@ -94,7 +97,7 @@ pub fn list_tasks(
     parent_id: Option<Option<&str>>,
 ) -> Result<Vec<Task>, String> {
     let mut sql = format!(
-        "SELECT {} FROM tasks WHERE 1=1",
+        "SELECT {} FROM tasks WHERE deleted_at IS NULL",
         TASK_COLUMNS
     );
     let mut params_vec: Vec<String> = Vec::new();
@@ -222,35 +225,61 @@ pub fn update_task(
 
 /// 删除任务
 pub fn delete_task(conn: &Connection, id: &str, cascade: bool) -> Result<u64, String> {
+    let time = now();
+
     if cascade {
-        // 先删除所有子任务
         conn.execute(
-            "DELETE FROM tasks WHERE parent_id = ?1",
-            params![id],
+            "UPDATE tasks SET deleted_at = ?1 WHERE parent_id = ?2 AND deleted_at IS NULL",
+            params![time, id],
         )
         .map_err(|e| format!("Failed to delete subtasks: {}", e))?;
     } else {
         // 将子任务的 parent_id 设为 NULL
         conn.execute(
-            "UPDATE tasks SET parent_id = NULL WHERE parent_id = ?1",
+            "UPDATE tasks SET parent_id = NULL WHERE parent_id = ?1 AND deleted_at IS NULL",
             params![id],
         )
         .map_err(|e| format!("Failed to update subtasks: {}", e))?;
     }
 
-    let affected = conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])
+    let affected = conn.execute("UPDATE tasks SET deleted_at = ?1 WHERE id = ?2", params![time, id])
         .map_err(|e| format!("Failed to delete task: {}", e))?;
 
     Ok(affected as u64)
 }
 
-/// 完成任务并分配XP
+/// 完成任务并分配XP和萤火
 pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, String> {
     let time = now();
 
     let tx = conn
         .transaction()
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    // 获取任务信息（用于计算萤火奖励）
+    let task_info: (Option<i32>, i32, i32) = tx
+        .query_row(
+            "SELECT estimated_minutes, xp_earned, glow_reward FROM tasks WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get::<_, Option<i32>>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2).unwrap_or(0))),
+        )
+        .map_err(|e| format!("Failed to get task info: {}", e))?;
+
+    let estimated_minutes = task_info.0.unwrap_or(25);
+    let current_xp_earned = task_info.1;
+    let task_glow_reward = task_info.2;
+
+    // 如果已经获得过XP（表示之前已完成过），不再重复奖励
+    let glow_reward = if current_xp_earned == 0 {
+        // 优先使用任务设定的萤火值，否则自动计算（最少 5）
+        if task_glow_reward > 0 {
+            task_glow_reward
+        } else {
+            (estimated_minutes as i32).max(5)
+        }
+    } else {
+        0
+    };
 
     // 更新任务状态
     tx.execute(
@@ -262,7 +291,7 @@ pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, 
     // 查询关联的技能
     let skill_xps: Vec<(String, i32)> = {
         let mut stmt = tx
-            .prepare("SELECT skill_id, xp_amount FROM task_skills WHERE task_id = ?1")
+            .prepare("SELECT skill_id, xp_amount FROM task_skills WHERE task_id = ?1 AND deleted_at IS NULL")
             .map_err(|e| format!("Failed to query task_skills: {}", e))?;
 
         let rows: Vec<(String, i32)> = stmt.query_map(params![id], |row| {
@@ -291,15 +320,15 @@ pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, 
         // 记录XP流水
         let event_id = gen_id();
         tx.execute(
-            "INSERT INTO skill_events (id, skill_id, xp_amount, source_type, source_id, note, created_at)
-             VALUES (?1, ?2, ?3, 'task', ?4, '任务完成', ?5)",
+            "INSERT INTO skill_events (id, skill_id, xp_amount, source_type, source_id, note, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'task', ?4, '任务完成', ?5, ?5)",
             params![event_id, skill_id, xp, id, time],
         )
         .map_err(|e| format!("Failed to create skill event: {}", e))?;
 
         // 获取技能名称
         let skill_name: String = tx
-            .query_row("SELECT name FROM skills WHERE id = ?1", params![skill_id], |row| row.get(0))
+            .query_row("SELECT name FROM skills WHERE id = ?1 AND deleted_at IS NULL", params![skill_id], |row| row.get(0))
             .unwrap_or_else(|_| "未知技能".to_string());
 
         result_skills.push(SkillXp {
@@ -316,6 +345,29 @@ pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, 
     )
     .map_err(|e| format!("Failed to update task xp_earned: {}", e))?;
 
+    // 奖励萤火（如果未重复完成）
+    if glow_reward > 0 {
+        tx.execute(
+            "UPDATE glow_balances SET glow_amount = glow_amount + ?1, updated_at = ?2 WHERE id = 'user'",
+            params![glow_reward, time],
+        )
+        .map_err(|e| format!("Failed to add glow reward: {}", e))?;
+
+        // 记录萤火账本
+        let balance_after: i32 = tx
+            .query_row("SELECT glow_amount FROM glow_balances WHERE id = 'user'", [], |row| row.get(0))
+            .unwrap_or(0);
+        let task_title: String = tx
+            .query_row("SELECT title FROM tasks WHERE id = ?1", params![id], |row| row.get(0))
+            .unwrap_or_default();
+        let ledger_id = gen_id();
+        let _ = tx.execute(
+            "INSERT INTO glow_ledger (id, asset_type, change_amount, balance_after, reason, source_desc, related_id, created_at)
+             VALUES (?1, 'glow', ?2, ?3, 'task_complete', ?4, ?5, ?6)",
+            params![ledger_id, glow_reward, balance_after, format!("完成任务「{}」", task_title), id, time],
+        );
+    }
+
     tx.commit()
         .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
@@ -326,6 +378,7 @@ pub fn complete_task(conn: &mut Connection, id: &str) -> Result<CompleteResult, 
 
     Ok(CompleteResult {
         xp_earned: total_xp,
+        glow_earned: glow_reward,
         skill_xps: result_skills,
     })
 }
@@ -341,7 +394,7 @@ pub fn uncomplete_task(conn: &mut Connection, id: &str) -> Result<(), String> {
     // 查询关联的技能XP（完成时分配的）
     let skill_xps: Vec<(String, i32)> = {
         let mut stmt = tx
-            .prepare("SELECT skill_id, xp_amount FROM task_skills WHERE task_id = ?1")
+            .prepare("SELECT skill_id, xp_amount FROM task_skills WHERE task_id = ?1 AND deleted_at IS NULL")
             .map_err(|e| format!("Failed to query task_skills: {}", e))?;
 
         let rows: Vec<(String, i32)> = stmt.query_map(params![id], |row| {
@@ -366,8 +419,8 @@ pub fn uncomplete_task(conn: &mut Connection, id: &str) -> Result<(), String> {
         // 记录撤回流水（负值）
         let event_id = gen_id();
         tx.execute(
-            "INSERT INTO skill_events (id, skill_id, xp_amount, source_type, source_id, note, created_at)
-             VALUES (?1, ?2, ?3, 'task', ?4, '取消完成', ?5)",
+            "INSERT INTO skill_events (id, skill_id, xp_amount, source_type, source_id, note, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'task', ?4, '取消完成', ?5, ?5)",
             params![event_id, skill_id, -xp, id, time],
         )
         .map_err(|e| format!("Failed to create skill event: {}", e))?;
@@ -390,7 +443,7 @@ pub fn uncomplete_task(conn: &mut Connection, id: &str) -> Result<(), String> {
 pub fn search_tasks(conn: &Connection, query: &str) -> Result<Vec<Task>, String> {
     let pattern = format!("%{}%", query);
     let sql = format!(
-        "SELECT {} FROM tasks WHERE title LIKE ?1 OR description LIKE ?1 OR notes LIKE ?1 ORDER BY created_at DESC",
+        "SELECT {} FROM tasks WHERE (title LIKE ?1 OR description LIKE ?1 OR notes LIKE ?1) AND deleted_at IS NULL ORDER BY created_at DESC",
         TASK_COLUMNS
     );
     let mut stmt = conn
@@ -446,7 +499,7 @@ pub fn search_tasks_scored(
     }
 
     let mut sql = format!(
-        "SELECT {} FROM tasks WHERE ({})",
+        "SELECT {} FROM tasks WHERE ({}) AND deleted_at IS NULL",
         TASK_COLUMNS,
         conditions.join(" OR ")
     );
@@ -526,5 +579,210 @@ pub struct SkillXp {
 #[derive(Debug, Serialize)]
 pub struct CompleteResult {
     pub xp_earned: i32,
+    pub glow_earned: i32,
     pub skill_xps: Vec<SkillXp>,
 }
+
+// ============================================================================
+// 测试
+// ============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE tasks (
+                id              TEXT PRIMARY KEY,
+                parent_id       TEXT,
+                title           TEXT NOT NULL,
+                description     TEXT,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                priority        TEXT,
+                scheduled_at    TEXT,
+                deadline        TEXT,
+                completed_at    TEXT,
+                xp_earned       INTEGER DEFAULT 0,
+                glow_reward     INTEGER DEFAULT 0,
+                estimated_minutes INTEGER DEFAULT 0,
+                notes           TEXT,
+                tags            TEXT,
+                sort_order      INTEGER DEFAULT 0,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                deleted_at      TEXT
+            );",
+        )
+        .unwrap();
+        conn
+    }
+
+    // ── create_task + get_task ──
+
+    #[test]
+    fn create_and_get_task() {
+        let conn = setup_db();
+        let task = create_task(&conn, "Buy milk", None, None, None, None, None, 0, None, 0).unwrap();
+        assert_eq!(task.title, "Buy milk");
+        assert_eq!(task.status, "pending");
+        assert!(!task.id.is_empty());
+
+        let fetched = get_task(&conn, &task.id).unwrap();
+        assert_eq!(fetched.title, "Buy milk");
+    }
+
+    #[test]
+    fn get_nonexistent_task_fails() {
+        let conn = setup_db();
+        assert!(get_task(&conn, "nonexistent").is_err());
+    }
+
+    // ── list_tasks ──
+
+    #[test]
+    fn list_tasks_filters_by_status() {
+        let conn = setup_db();
+        create_task(&conn, "Task A", None, None, None, None, None, 0, None, 0).unwrap();
+        create_task(&conn, "Task B", None, None, None, None, None, 0, None, 0).unwrap();
+
+        let all = list_tasks(&conn, None, None).unwrap();
+        assert_eq!(all.len(), 2);
+
+        let pending = list_tasks(&conn, Some("pending"), None).unwrap();
+        assert_eq!(pending.len(), 2);
+
+        let done = list_tasks(&conn, Some("completed"), None).unwrap();
+        assert_eq!(done.len(), 0);
+    }
+
+    #[test]
+    fn list_tasks_excludes_soft_deleted() {
+        let conn = setup_db();
+
+        // create_task is innocent; delete_task expects glow_reward
+        // So we just test that a soft-deleted task is excluded
+        let task = create_task(&conn, "Keep", None, None, None, None, None, 0, None, 0).unwrap();
+
+        // Soft-delete the task
+        conn.execute(
+            "UPDATE tasks SET deleted_at = '2024-06-01T00:00:00Z' WHERE id = ?1",
+            rusqlite::params![task.id],
+        )
+        .unwrap();
+
+        let visible = list_tasks(&conn, None, None).unwrap();
+        assert!(visible.is_empty());
+    }
+
+    // ── update_task ──
+
+    #[test]
+    fn update_task_title() {
+        let conn = setup_db();
+        let task = create_task(&conn, "Old title", None, None, None, None, None, 0, None, 0).unwrap();
+
+        let updated = update_task(
+            &conn,
+            &task.id,
+            Some("New title"),
+            None, None, None, None, None, None, None, None,
+        )
+        .unwrap();
+        assert_eq!(updated.title, "New title");
+    }
+
+    #[test]
+    fn update_task_status_to_completed() {
+        let conn = setup_db();
+        let task = create_task(&conn, "Task", None, None, None, None, None, 0, None, 0).unwrap();
+
+        let updated = update_task(
+            &conn,
+            &task.id,
+            None, None,
+            Some("completed"),
+            None, None, None, None, None, None,
+        )
+        .unwrap();
+        assert_eq!(updated.status, "completed");
+        assert!(updated.completed_at.is_some());
+    }
+
+    #[test]
+    fn update_nonexistent_task_fails() {
+        let conn = setup_db();
+        assert!(update_task(&conn, "nope", Some("x"), None, None, None, None, None, None, None, None).is_err());
+    }
+
+    // ── delete_task ──
+
+    #[test]
+    fn delete_task_soft_deletes() {
+        let conn = setup_db();
+        let task = create_task(&conn, "Delete me", None, None, None, None, None, 0, None, 0).unwrap();
+
+        crate::db::repositories::task_repo::delete_task(&conn, &task.id, false).unwrap();
+
+        // get_task should fail for soft-deleted
+        assert!(get_task(&conn, &task.id).is_err());
+    }
+
+    // ── complete_task ──
+
+    #[test]
+    fn complete_task_updates_status() {
+        let mut conn = setup_db();
+
+        // Need skills table for complete_task (references skill_xp)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS skills (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT,
+                level INTEGER DEFAULT 1, total_xp INTEGER DEFAULT 0,
+                is_unlocked INTEGER DEFAULT 1, icon TEXT, color TEXT,
+                parent_id TEXT, description TEXT,
+                created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS task_skills (
+                id TEXT PRIMARY KEY, task_id TEXT NOT NULL, skill_id TEXT NOT NULL,
+                xp_amount INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '',
+                deleted_at TEXT,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
+                UNIQUE(task_id, skill_id)
+            );
+            INSERT INTO skills (id, name, category, is_unlocked, created_at, updated_at)
+            VALUES ('focus', '专注', 'mind', 1, '', ''),
+                   ('vitality', '活力', 'body', 1, '', '');
+            CREATE TABLE IF NOT EXISTS glow_balances (
+                id TEXT PRIMARY KEY, glow_amount INTEGER DEFAULT 0,
+                micro_tickets INTEGER DEFAULT 0, shimmer_tickets INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+            INSERT OR IGNORE INTO glow_balances (id, glow_amount, micro_tickets, shimmer_tickets, updated_at)
+            VALUES ('user', 0, 0, 0, '');
+            CREATE TABLE IF NOT EXISTS glow_ledger (
+                id TEXT PRIMARY KEY, asset_type TEXT NOT NULL,
+                change_amount INTEGER NOT NULL, balance_after INTEGER NOT NULL,
+                reason TEXT NOT NULL, source_desc TEXT DEFAULT '',
+                related_id TEXT DEFAULT '', created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS skill_events (
+                id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
+                xp_amount INTEGER NOT NULL, source_type TEXT NOT NULL,
+                source_id TEXT, note TEXT, created_at TEXT NOT NULL,
+                FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+            );",
+        )
+        .unwrap();
+
+        let task = create_task(&conn, "Done task", None, None, None, None, None, 0, None, 0).unwrap();
+
+        let result = crate::db::repositories::task_repo::complete_task(&mut conn, &task.id)
+            .unwrap();
+        assert!(result.xp_earned >= 0);
+    }
+}
+

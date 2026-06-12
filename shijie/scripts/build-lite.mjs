@@ -25,8 +25,8 @@ try {
 
   // Rename output
   const bundleDir = join(root, "src-tauri", "target", "release", "bundle", "nsis");
-  const stdName = join(bundleDir, "拾阶_1.2.3_x64-setup.exe");
-  const liteName = join(bundleDir, "拾阶_1.2.3_x64-lite-setup.exe");
+  const stdName = join(bundleDir, "提灯_2.5.0_x64-setup.exe");
+  const liteName = join(bundleDir, "提灯_2.5.0_x64-lite-setup.exe");
 
   if (existsSync(stdName)) {
     copyFileSync(stdName, liteName);

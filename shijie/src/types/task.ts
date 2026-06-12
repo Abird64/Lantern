@@ -28,6 +28,7 @@ export interface CreateTaskInput {
   deadline?: string;
   estimated_minutes?: number;
   tags?: string;
+  glow_reward?: number;
 }
 
 /** 更新任务的输入参数 */
@@ -52,6 +53,7 @@ export interface ListTasksInput {
 /** 完成任务的结果 */
 export interface CompleteResult {
   xp_earned: number;
+  glow_earned: number;
   skill_xps: SkillXp[];
 }
 

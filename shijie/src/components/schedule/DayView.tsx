@@ -1,12 +1,12 @@
 import type { Schedule } from '@/types/schedule';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { EventBlock } from './EventBlock';
 import {
-  HOUR_START,
   HOUR_END,
   hourToPercent,
   layoutOverlappingEvents,
 } from '@/utils/scheduleLayout';
+import { CurrentTimeLine } from './CurrentTimeLine';
 
 
 interface DayViewProps {
@@ -87,13 +87,13 @@ export function DayView({ date, schedules, onEventClick, onBack, backLabel = 'è¿
   return (
     <div className="w-full rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: appTheme.canvas }}>
       {/* è¡¨å¤´ */}
-      <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${appTheme.primary}33` }}>
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: `1px solid ${withAlpha(appTheme.primary, 0.2)}` }}>
         <button
           onClick={onBack}
           className="text-sm transition-colors"
-          style={{ color: `${appTheme.ink}99` }}
+          style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}
           onMouseEnter={(e) => (e.currentTarget.style.color = appTheme.ink)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = `${appTheme.ink}99`)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = `${withAlpha(appTheme.ink, 0.6)}`)}
         >
           &larr; {backLabel}
         </button>
@@ -101,7 +101,7 @@ export function DayView({ date, schedules, onEventClick, onBack, backLabel = 'è¿
           <span className="text-lg font-light" style={{ color: appTheme.ink }}>
             {date.getMonth() + 1}æœˆ{date.getDate()}æ—¥
           </span>
-          <span className="text-sm" style={{ color: `${appTheme.ink}80` }}>
+          <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>
             {weekDayNames[date.getDay()]}
           </span>
           {isToday && (
@@ -121,13 +121,13 @@ export function DayView({ date, schedules, onEventClick, onBack, backLabel = 'è¿
             <div
               key={hour}
               className="absolute w-full text-right pr-3 text-xs -translate-y-1/2"
-              style={{ top: `${hourToPercent(hour)}%`, color: `${appTheme.ink}66` }}
+              style={{ top: `${hourToPercent(hour)}%`, color: `${withAlpha(appTheme.ink, 0.4)}` }}
             >
               {hour.toString().padStart(2, '0')}:00
             </div>
           ))}
           <div
-            className="absolute left-0 right-0 border-t border-dashed" style={{ borderColor: `${appTheme.primary}4D`, top: `${hourToPercent(7)}%` }}
+            className="absolute left-0 right-0 border-t border-dashed" style={{ borderColor: `${withAlpha(appTheme.primary, 0.3)}`, top: `${hourToPercent(7)}%` }}
           />
         </div>
 
@@ -136,12 +136,12 @@ export function DayView({ date, schedules, onEventClick, onBack, backLabel = 'è¿
           {hours.map((hour) => (
             <div
               key={hour}
-              className="absolute w-full h-[1px] left-0" style={{ top: `${hourToPercent(hour)}%`, backgroundColor: `${appTheme.primary}33` }}
+              className="absolute w-full h-[1px] left-0" style={{ top: `${hourToPercent(hour)}%`, backgroundColor: `${withAlpha(appTheme.primary, 0.2)}` }}
             />
           ))}
 
           {isToday && (
-            <div className="absolute top-0 h-full left-0 right-0" style={{ backgroundColor: `${appTheme.primary}0D` }} />
+            <div className="absolute top-0 h-full left-0 right-0" style={{ backgroundColor: `${withAlpha(appTheme.primary, 0.05)}` }} />
           )}
 
           {/* æ™®é€šæ—¥ç¨‹ */}
@@ -175,25 +175,6 @@ export function DayView({ date, schedules, onEventClick, onBack, backLabel = 'è¿
           <CurrentTimeLine />
         </div>
       </div>
-    </div>
-  );
-}
-
-function CurrentTimeLine() {
-  const now = new Date();
-  const hour = now.getHours() + now.getMinutes() / 60;
-
-  if (hour < HOUR_START || hour > HOUR_END) return null;
-
-  const top = hourToPercent(hour);
-
-  return (
-    <div
-      className="absolute w-full left-0 z-20 pointer-events-none"
-      style={{ top: `${top}%` }}
-    >
-      <div className="w-full h-[2px] bg-red-500" />
-      <div className="absolute -left-1 -top-[4px] w-[10px] h-[10px] rounded-full bg-red-500" />
     </div>
   );
 }

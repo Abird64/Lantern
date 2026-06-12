@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { Plus, X, Trash2, Phone, MessageCircle, AtSign, Globe } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Plus, X, Trash2, Phone, MessageCircle, AtSign, Globe, Search } from 'lucide-react';
+import { Select } from '@/components/ui/Select';
 import { NavBar, CapsuleTabs } from '@/components/ui';
 import { PageContainer } from '@/components/layout';
 import { BirthdayBar } from '@/components/relations/BirthdayBar';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { useContactStore } from '@/stores/contactStore';
 import type { Contact, ContactMethodInput } from '@/types/contact';
 
@@ -34,6 +35,26 @@ const groupColors: Record<string, string> = {
   teacher: '#3478A0',
 };
 
+/** 计算指定年月的天数 */
+function daysInMonth(year: string, month: string): number {
+  if (!month) return 31;
+  const m = parseInt(month);
+  if (m === 2) {
+    const y = year ? parseInt(year) : 2024;
+    return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(m) ? 30 : 31;
+}
+
+function formatBirthday(calendar: string | null, year: number | null, month: number | null, day: number | null): string {
+  if (!month || !day) return '';
+  const cal = calendar === 'lunar' ? '农历' : '阳历';
+  const parts: string[] = [];
+  if (year) parts.push(year + '年');
+  parts.push(month + '月' + day + '日');
+  return cal + ' ' + parts.join('');
+}
+
 
 const METHOD_TYPES: { id: string; label: string; icon: typeof Phone }[] = [
   { id: 'phone', label: '电话', icon: Phone },
@@ -51,12 +72,17 @@ function getMethodLabel(type: string): string {
   return METHOD_TYPES.find((m) => m.id === type)?.label ?? type;
 }
 
-/** 逗号分隔字符串 ↔ 数组 */
+const TAG_SEP = ';;';
+
+/** 分隔符分隔字符串 ↔ 数组（向后兼容旧的逗号分隔） */
 function splitTags(s: string): string[] {
+  if (s.includes(TAG_SEP)) {
+    return s.split(TAG_SEP).map(v => v.trim()).filter(Boolean);
+  }
   return s.split(/[,，]/).map(v => v.trim()).filter(Boolean);
 }
 function joinTags(arr: string[]): string {
-  return arr.join(', ');
+  return arr.join(TAG_SEP);
 }
 
 /** 标签输入组件（提取到组件外部，避免每次渲染重建导致失焦） */
@@ -67,6 +93,7 @@ function TagInput({
   inputVal: string; onInputChange: (v: string) => void;
   placeholder: string; accentColor: string;
 }) {
+  const appTheme = useAppTheme();
   return (
     <div>
       {tags.length > 0 && (
@@ -75,7 +102,7 @@ function TagInput({
             <span
               key={i}
               className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm"
-              style={{ backgroundColor: `${accentColor}25`, color: accentColor }}
+              style={{ backgroundColor: `${withAlpha(accentColor, 0.15)}`, color: accentColor }}
             >
               {tag}
               <button
@@ -106,8 +133,8 @@ function TagInput({
         placeholder={placeholder}
         className="w-full text-base rounded-2xl px-4 py-3 focus:outline-none"
         style={{
-          backgroundColor: `${accentColor}10`,
-          color: '#F2E9E0',
+          backgroundColor: `${withAlpha(accentColor, 0.06)}`,
+          color: appTheme.ink,
         }}
       />
     </div>
@@ -127,18 +154,14 @@ function MethodRow({
   const Icon = getMethodIcon(method.method_type);
   return (
     <div className="flex items-center gap-2">
-      <select
+      <Select
         value={method.method_type}
-        onChange={(e) => onChange({ ...method, method_type: e.target.value })}
-        className="custom-select text-sm rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer flex-shrink-0"
-        style={{ color: textColor, backgroundColor: bgColor }}
-      >
-        {METHOD_TYPES.map((mt) => (
-          <option key={mt.id} value={mt.id}>{mt.label}</option>
-        ))}
-      </select>
+        onChange={(v) => onChange({ ...method, method_type: v })}
+        options={METHOD_TYPES.map((mt) => ({ value: mt.id, label: mt.label }))}
+        className="flex-shrink-0"
+      />
       <div className="flex-1 relative">
-        <Icon size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: `${textColor}60` }} />
+        <Icon size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: `${withAlpha(textColor, 0.38)}` }} />
         <input
           type="text"
           value={method.value}
@@ -153,7 +176,7 @@ function MethodRow({
         className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity"
         title="移除"
       >
-        <X size={14} style={{ color: `${textColor}60` }} />
+        <X size={14} style={{ color: `${withAlpha(textColor, 0.38)}` }} />
       </button>
     </div>
   );
@@ -163,6 +186,7 @@ export function RelationsPage() {
   const appTheme = useAppTheme();
   const { contacts, isLoading, fetchContacts, createContact, updateContact, deleteContact } = useContactStore();
   const [activeCategory, setActiveCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // 创建弹窗
   const [showCreate, setShowCreate] = useState(false);
@@ -174,6 +198,8 @@ export function RelationsPage() {
   const [newBirthdayYear, setNewBirthdayYear] = useState('');
   const [newBirthdayMonth, setNewBirthdayMonth] = useState('');
   const [newBirthdayDay, setNewBirthdayDay] = useState('');
+
+  const createDaysInMonth = daysInMonth(newBirthdayYear, newBirthdayMonth);
   const [newContactMethods, setNewContactMethods] = useState<ContactMethodInput[]>([]);
   const [newNotes, setNewNotes] = useState('');
   const createInputRef = useRef<HTMLInputElement>(null);
@@ -194,6 +220,13 @@ export function RelationsPage() {
   // Toast
   const [toast, setToast] = useState('');
 
+  // 编辑模式
+  const [isEditing, setIsEditing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [expandCreate, setExpandCreate] = useState(false);
+
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
@@ -204,9 +237,19 @@ export function RelationsPage() {
     }
   }, [showCreate]);
 
-  const filteredContacts = activeCategory === 'all'
-    ? contacts
-    : contacts.filter((c) => c.group_name === groupIdToLabel[activeCategory]);
+  const filteredContacts = useMemo(() => {
+    let list = activeCategory === 'all'
+      ? contacts
+      : contacts.filter((c) => c.group_name === groupIdToLabel[activeCategory]);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.nickname && c.nickname.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [contacts, activeCategory, searchQuery]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -224,10 +267,12 @@ export function RelationsPage() {
     setNewBirthdayDay('');
     setNewContactMethods([]);
     setNewNotes('');
+    setExpandCreate(false);
   }
 
   async function handleCreate() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || isCreating) return;
+    setIsCreating(true);
     try {
       await createContact({
         name: newName.trim(),
@@ -244,7 +289,10 @@ export function RelationsPage() {
       resetCreateForm();
       showToast('已添加');
     } catch (e) {
-      showToast(String(e));
+      showToast('添加失败，请重试');
+      console.error(e);
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -262,14 +310,42 @@ export function RelationsPage() {
       contact.contact_methods?.map((m) => ({ method_type: m.method_type, value: m.value })) ?? []
     );
     setEditNotes(contact.notes || '');
+    setIsEditing(false);
+    setSaveStatus('idle');
   }
 
   function closeDetail() {
     setSelectedContact(null);
+    setIsEditing(false);
+    setSaveStatus('idle');
   }
 
-  async function saveEdit() {
+  function handleEnterEdit() {
+    setIsEditing(true);
+    setSaveStatus('idle');
+  }
+
+  function handleCancelEdit() {
+    if (selectedContact) {
+      setEditName(selectedContact.name);
+      setEditNicknames(selectedContact.nickname ? splitTags(selectedContact.nickname) : []);
+      setEditGroupName(selectedContact.group_name || '');
+      setEditBirthdayCalendar((selectedContact.birthday_calendar as 'solar' | 'lunar') || 'solar');
+      setEditBirthdayYear(selectedContact.birthday_year ? String(selectedContact.birthday_year) : '');
+      setEditBirthdayMonth(selectedContact.birthday_month ? String(selectedContact.birthday_month) : '');
+      setEditBirthdayDay(selectedContact.birthday_day ? String(selectedContact.birthday_day) : '');
+      setEditContactMethods(
+        selectedContact.contact_methods?.map((m) => ({ method_type: m.method_type, value: m.value })) ?? []
+      );
+      setEditNotes(selectedContact.notes || '');
+    }
+    setIsEditing(false);
+    setSaveStatus('idle');
+  }
+
+  async function handleSave() {
     if (!selectedContact || !editName.trim()) return;
+    setSaveStatus('saving');
     try {
       await updateContact(selectedContact.id, {
         name: editName.trim(),
@@ -282,36 +358,32 @@ export function RelationsPage() {
         contact_methods: editContactMethods.length > 0 ? editContactMethods : undefined,
         notes: editNotes.trim() || undefined,
       });
+      setSaveStatus('saved');
+      setIsEditing(false);
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (e) {
-      showToast(String(e));
+      setSaveStatus('error');
+      showToast('保存失败，请重试');
+      console.error(e);
     }
   }
 
-  // 首次加载标记：打开详情时重置
-  const editInitRef = useRef(true);
-  useEffect(() => {
-    if (selectedContact) {
-      editInitRef.current = true;
-      const timer = setTimeout(() => { editInitRef.current = false; }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedContact?.id]);
-
-  // 自动保存：编辑字段变更后 800ms 自动保存
-  useEffect(() => {
-    if (editInitRef.current || !selectedContact) return;
-    const timer = setTimeout(() => saveEdit(), 800);
-    return () => clearTimeout(timer);
-  }, [editName, editNicknames, editGroupName, editBirthdayCalendar, editBirthdayYear, editBirthdayMonth, editBirthdayDay, editContactMethods, editNotes]);
-
   async function handleDelete() {
+    if (!selectedContact) return;
+    setShowDeleteConfirm(true);
+  }
+
+  async function executeDelete() {
     if (!selectedContact) return;
     try {
       await deleteContact(selectedContact.id);
       showToast('已删除');
       closeDetail();
     } catch (e) {
-      showToast(String(e));
+      showToast('删除失败，请重试');
+      console.error(e);
+    } finally {
+      setShowDeleteConfirm(false);
     }
   }
 
@@ -322,13 +394,31 @@ export function RelationsPage() {
   }
 
   return (
-    <PageContainer className="relative">
-      <NavBar title="相识" />
+    <PageContainer className="relative" style={{ '--select-color': appTheme.ink, '--select-bg': appTheme.canvas } as React.CSSProperties}>
+      <NavBar title="联系人" />
 
-      {/* 固定控制区：胶囊分类 */}
-      <div className="flex-shrink-0 flex flex-col items-center px-4 sm:px-8 pt-6 pb-4 relative z-10">
+      {/* 固定控制区：搜索 + 生日 + 分类 */}
+      <div className="flex-shrink-0 flex flex-col items-center px-4 sm:px-8 pt-4 pb-4 relative z-10">
         <div className="w-full max-w-[1000px] space-y-4">
+          {/* 搜索栏 */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: appTheme.inkMuted48 }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索联系人"
+              aria-label="搜索联系人"
+              className="w-full text-sm rounded-xl pl-9 pr-4 py-2.5 focus:outline-none"
+              style={{
+                backgroundColor: `${withAlpha(appTheme.ink, 0.04)}`,
+                color: appTheme.ink,
+              }}
+            />
+          </div>
+
           <BirthdayBar />
+
           <CapsuleTabs
             items={categories}
             activeId={activeCategory}
@@ -342,12 +432,12 @@ export function RelationsPage() {
       <div className="flex-1 overflow-y-auto flex flex-col items-center px-4 sm:px-8 pb-8 relative z-10">
         <div className="max-w-[1000px] mx-auto w-full">
           {isLoading && contacts.length === 0 ? (
-            <div className="text-center py-20" style={{ color: `${appTheme.ink}66` }}>
+            <div className="text-center py-20" style={{ color: `${withAlpha(appTheme.ink, 0.4)}` }}>
               加载中...
             </div>
           ) : filteredContacts.length === 0 ? (
-            <div className="text-center py-20" style={{ color: `${appTheme.ink}66` }}>
-              暂无联系人
+            <div className="text-center py-20" style={{ color: `${withAlpha(appTheme.ink, 0.4)}` }}>
+              {searchQuery.trim() ? '未找到匹配的联系人' : '暂无联系人'}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -360,9 +450,11 @@ export function RelationsPage() {
                 >
                   {/* 头像 */}
                   <div
-                    className="w-[48px] h-[48px] rounded-full flex-shrink-0"
+                    className="w-[48px] h-[48px] rounded-full flex-shrink-0 flex items-center justify-center text-lg font-semibold text-white"
                     style={{ backgroundColor: getGroupColor(contact.group_name) }}
-                  />
+                  >
+                    {contact.name.charAt(0)}
+                  </div>
 
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -370,7 +462,7 @@ export function RelationsPage() {
                         {contact.name}
                       </span>
                       {contact.nickname && (
-                        <span className=" text-sm truncate" style={{ color: `${appTheme.ink}55` }}>
+                        <span className=" text-sm truncate" style={{ color: `${withAlpha(appTheme.ink, 0.33)}` }}>
                           ({splitTags(contact.nickname)[0]}{splitTags(contact.nickname).length > 1 ? '...' : ''})
                         </span>
                       )}
@@ -379,7 +471,7 @@ export function RelationsPage() {
                       <span
                         className=" text-sm mt-1 px-2 py-0.5 rounded-full w-fit"
                         style={{
-                          backgroundColor: `${getGroupColor(contact.group_name)}30`,
+                          backgroundColor: `${withAlpha(getGroupColor(contact.group_name), 0.19)}`,
                           color: getGroupColor(contact.group_name),
                         }}
                       >
@@ -394,17 +486,18 @@ export function RelationsPage() {
                             <span
                               key={m.id}
                               className="inline-flex items-center gap-1 text-xs"
-                              style={{ color: `${appTheme.ink}80` }}
+                              style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}
                             >
                               <Icon size={11} />
                               <span className="">{getMethodLabel(m.method_type)}</span>
+                              <span className="truncate max-w-[100px]">{m.value}</span>
                             </span>
                           );
                         })}
                       </div>
                     )}
                     {contact.notes && (
-                      <span className=" text-sm mt-1 truncate" style={{ color: `${appTheme.ink}99` }}>
+                      <span className=" text-sm mt-1 truncate" style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}>
                         {contact.notes}
                       </span>
                     )}
@@ -419,6 +512,7 @@ export function RelationsPage() {
       {/* 右下角加号按钮 */}
       <button
         onClick={() => setShowCreate(true)}
+        aria-label="添加联系人"
         className="fixed bottom-[72px] right-8 z-30 w-14 h-14 rounded-full text-white active:scale-95 transition-all flex items-center justify-center"
         style={{ backgroundColor: appTheme.primary }}
       >
@@ -446,13 +540,13 @@ export function RelationsPage() {
               className="w-full text-xl bg-transparent border-b pb-3 mb-5 focus:outline-none"
               style={{
                 color: appTheme.ink,
-                borderColor: newName ? appTheme.primary : `${appTheme.ink}20`,
+                borderColor: newName ? appTheme.primary : `${withAlpha(appTheme.ink, 0.13)}`,
               }}
             />
 
             {/* 别称/昵称（多值） */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}80` }}>别称 / 昵称</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>别称 / 昵称</label>
               <TagInput
                 tags={newNicknames}
                 onTagsChange={setNewNicknames}
@@ -465,7 +559,7 @@ export function RelationsPage() {
 
             {/* 分组 */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}80` }}>分组</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>分组</label>
               <div className="flex gap-2 flex-wrap">
                 {Object.entries(groupIdToLabel).map(([id, label]) => (
                   <button
@@ -473,8 +567,8 @@ export function RelationsPage() {
                     onClick={() => setNewGroupName(newGroupName === label ? '' : label)}
                     className="px-3 py-1.5 rounded-full text-sm transition-all"
                     style={{
-                      backgroundColor: newGroupName === label ? groupColors[id] : `${appTheme.ink}10`,
-                      color: newGroupName === label ? '#fff' : `${appTheme.ink}99`,
+                      backgroundColor: newGroupName === label ? groupColors[id] : `${withAlpha(appTheme.ink, 0.06)}`,
+                      color: newGroupName === label ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.6)}`,
                     }}
                   >
                     {label}
@@ -483,18 +577,30 @@ export function RelationsPage() {
               </div>
             </div>
 
+            {!expandCreate && (
+              <button
+                onClick={() => setExpandCreate(true)}
+                className="w-full py-2 text-sm transition-colors mb-4"
+                style={{ color: appTheme.inkMuted48 }}
+              >
+                展开更多...
+              </button>
+            )}
+
+            {expandCreate && (
+            <>
             {/* 生日 */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}80` }}>生日</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>生日</label>
               <div className="flex items-center gap-2 flex-wrap">
                 {/* 日历类型切换 */}
-                <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${appTheme.ink}08` }}>
+                <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}>
                   <button
                     onClick={() => setNewBirthdayCalendar('solar')}
                     className="px-3 py-1.5 text-xs transition-colors"
                     style={{
                       backgroundColor: newBirthdayCalendar === 'solar' ? appTheme.primary : 'transparent',
-                      color: newBirthdayCalendar === 'solar' ? '#fff' : `${appTheme.ink}60`,
+                      color: newBirthdayCalendar === 'solar' ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.38)}`,
                     }}
                   >阳历</button>
                   <button
@@ -502,7 +608,7 @@ export function RelationsPage() {
                     className="px-3 py-1.5 text-xs transition-colors"
                     style={{
                       backgroundColor: newBirthdayCalendar === 'lunar' ? appTheme.primary : 'transparent',
-                      color: newBirthdayCalendar === 'lunar' ? '#fff' : `${appTheme.ink}60`,
+                      color: newBirthdayCalendar === 'lunar' ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.38)}`,
                     }}
                   >农历</button>
                 </div>
@@ -514,41 +620,37 @@ export function RelationsPage() {
                   placeholder="年份"
                   min="1900" max="2100"
                   className="w-20 text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                  style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}08` }}
+                  style={{ color: appTheme.ink, backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}
                 />
-                <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>年</span>
+                <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>年</span>
                 {/* 月份 */}
-                <select
+                <Select
                   value={newBirthdayMonth}
-                  onChange={(e) => setNewBirthdayMonth(e.target.value)}
-                  className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                  style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}0D` }}
-                >
-                  <option value="">月</option>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>{i + 1}</option>
-                  ))}
-                </select>
-                <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>月</span>
+                  onChange={(v) => {
+                    setNewBirthdayMonth(v);
+                    if (newBirthdayDay && v) {
+                      const maxD = daysInMonth(newBirthdayYear, v);
+                      if (parseInt(newBirthdayDay) > maxD) setNewBirthdayDay(String(maxD));
+                    }
+                  }}
+                  placeholder="月"
+                  options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                />
+                <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>月</span>
                 {/* 日期 */}
-                <select
+                <Select
                   value={newBirthdayDay}
-                  onChange={(e) => setNewBirthdayDay(e.target.value)}
-                  className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                  style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}0D` }}
-                >
-                  <option value="">日</option>
-                  {Array.from({ length: 31 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>{i + 1}</option>
-                  ))}
-                </select>
-                <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>日</span>
+                  onChange={setNewBirthdayDay}
+                  placeholder="日"
+                  options={Array.from({ length: createDaysInMonth }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                />
+                <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>日</span>
               </div>
             </div>
 
             {/* 联系方式 */}
             <div className="mb-4">
-              <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}80` }}>联系方式</label>
+              <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>联系方式</label>
               <div className="space-y-2">
                 {newContactMethods.map((m, i) => (
                   <MethodRow
@@ -561,7 +663,7 @@ export function RelationsPage() {
                     }}
                     onRemove={() => setNewContactMethods(newContactMethods.filter((_, j) => j !== i))}
                     textColor={appTheme.ink}
-                    bgColor={`${appTheme.ink}08`}
+                    bgColor={`${withAlpha(appTheme.ink, 0.03)}`}
                   />
                 ))}
               </div>
@@ -583,18 +685,21 @@ export function RelationsPage() {
                 rows={2}
                 className="w-full text-base rounded-2xl px-4 py-3 focus:outline-none resize-none"
                 style={{
-                  backgroundColor: `${appTheme.ink}08`,
+                  backgroundColor: `${withAlpha(appTheme.ink, 0.03)}`,
                   color: appTheme.ink,
                 }}
               />
             </div>
+
+            </>
+            )}
 
             {/* 按钮 */}
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowCreate(false); resetCreateForm(); }}
                 className="flex-1 py-3 rounded-full transition-colors"
-                style={{ color: `${appTheme.ink}80`, backgroundColor: `${appTheme.ink}10` }}
+                style={{ color: `${withAlpha(appTheme.ink, 0.5)}`, backgroundColor: `${withAlpha(appTheme.ink, 0.06)}` }}
               >
                 取消
               </button>
@@ -625,41 +730,146 @@ export function RelationsPage() {
             style={{ backgroundColor: appTheme.canvas }}
           >
             {/* 头部 */}
-            <div className="flex items-center justify-between p-6" style={{ borderBottom: `1px solid ${appTheme.ink}15` }}>
-              <h2 className="text-xl " style={{ color: appTheme.ink }}>联系人详情</h2>
-              <button
-                onClick={closeDetail}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:opacity-80 transition-colors"
-                style={{ backgroundColor: `${appTheme.ink}15` }}
-              >
-                <X size={16} style={{ color: `${appTheme.ink}99` }} />
-              </button>
+            <div className="flex items-center justify-between p-6" style={{ borderBottom: `1px solid ${withAlpha(appTheme.ink, 0.08)}` }}>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl " style={{ color: appTheme.ink }}>联系人详情</h2>
+                {saveStatus === 'saving' && (
+                  <span className="text-xs" style={{ color: appTheme.inkMuted48 }}>保存中...</span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="text-xs" style={{ color: '#4CAF76' }}>已保存</span>
+                )}
+                {saveStatus === 'error' && (
+                  <span className="text-xs" style={{ color: appTheme.danger }}>保存失败</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!isEditing && (
+                  <button
+                    onClick={handleEnterEdit}
+                    className="px-4 py-2 rounded-full text-sm transition-colors"
+                    style={{ backgroundColor: appTheme.primary, color: appTheme.onPrimary }}
+                  >
+                    编辑
+                  </button>
+                )}
+                <button
+                  onClick={closeDetail}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:opacity-80 transition-colors"
+                  style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.08)}` }}
+                >
+                  <X size={16} style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }} />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {!isEditing && (
+                <>
+                  {/* 头像预览 */}
+                  <div className="flex justify-center">
+                    <div
+                      className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-semibold text-white"
+                      style={{ backgroundColor: getGroupColor(selectedContact.group_name) }}
+                    >
+                      {selectedContact.name.charAt(0)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>姓名</label>
+                    <p className="text-lg" style={{ color: appTheme.ink }}>{selectedContact.name}</p>
+                  </div>
+
+                  {selectedContact.nickname && splitTags(selectedContact.nickname).length > 0 && (
+                    <div>
+                      <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>别称 / 昵称</label>
+                      <div className="flex flex-wrap gap-2">
+                        {splitTags(selectedContact.nickname).map((tag, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm"
+                            style={{ backgroundColor: `${withAlpha(appTheme.primary, 0.15)}`, color: appTheme.primary }}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.group_name && (
+                    <div>
+                      <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>分组</label>
+                      <span className="px-3 py-1 rounded-full text-sm"
+                        style={{ backgroundColor: `${withAlpha(getGroupColor(selectedContact.group_name), 0.19)}`, color: getGroupColor(selectedContact.group_name) }}>
+                        {selectedContact.group_name}
+                      </span>
+                    </div>
+                  )}
+
+                  {(selectedContact.birthday_month && selectedContact.birthday_day) ? (
+                    <div>
+                      <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>生日</label>
+                      <p className="text-base" style={{ color: appTheme.ink }}>
+                        {formatBirthday(selectedContact.birthday_calendar || null, selectedContact.birthday_year ?? null, selectedContact.birthday_month ?? null, selectedContact.birthday_day ?? null)}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedContact.contact_methods && selectedContact.contact_methods.length > 0 && (
+                    <div>
+                      <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>联系方式</label>
+                      <div className="space-y-2">
+                        {selectedContact.contact_methods.map((m) => {
+                          const Icon = getMethodIcon(m.method_type);
+                          return (
+                            <div key={m.id} className="flex items-center gap-2 text-sm" style={{ color: appTheme.ink }}>
+                              <Icon size={14} style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }} />
+                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.06)}`, color: appTheme.inkMuted80 }}>
+                                {getMethodLabel(m.method_type)}
+                              </span>
+                              <span>{m.value}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedContact.notes && (
+                    <div>
+                      <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>备注</label>
+                      <p className="text-sm leading-relaxed" style={{ color: `${withAlpha(appTheme.ink, 0.7)}` }}>{selectedContact.notes}</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {isEditing && (
+                <>
               {/* 头像预览 */}
               <div className="flex justify-center">
                 <div
-                  className="w-20 h-20 rounded-full"
+                  className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-semibold text-white"
                   style={{ backgroundColor: getGroupColor(editGroupName || selectedContact.group_name) }}
-                />
+                >
+                  {editName.charAt(0) || selectedContact.name.charAt(0)}
+                </div>
               </div>
 
               {/* 姓名 */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>姓名</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>姓名</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full text-lg rounded-2xl px-4 py-3 focus:outline-none"
-                  style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}08` }}
+                  style={{ color: appTheme.ink, backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}
                 />
               </div>
 
               {/* 别称/昵称（多值） */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>别称 / 昵称</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>别称 / 昵称</label>
                 <TagInput
                   tags={editNicknames}
                   onTagsChange={setEditNicknames}
@@ -672,7 +882,7 @@ export function RelationsPage() {
 
               {/* 分组 */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>分组</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>分组</label>
                 <div className="flex gap-2 flex-wrap">
                   {Object.entries(groupIdToLabel).map(([id, label]) => (
                     <button
@@ -680,8 +890,8 @@ export function RelationsPage() {
                       onClick={() => setEditGroupName(editGroupName === label ? '' : label)}
                       className="px-4 py-1.5 rounded-full text-sm transition-all"
                       style={{
-                        backgroundColor: editGroupName === label ? groupColors[id] : `${appTheme.ink}10`,
-                        color: editGroupName === label ? '#fff' : `${appTheme.ink}99`,
+                        backgroundColor: editGroupName === label ? groupColors[id] : `${withAlpha(appTheme.ink, 0.06)}`,
+                        color: editGroupName === label ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.6)}`,
                       }}
                     >
                       {label}
@@ -692,16 +902,16 @@ export function RelationsPage() {
 
               {/* 生日 */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>生日</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>生日</label>
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* 日历类型切换 */}
-                  <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${appTheme.ink}08` }}>
+                  <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}>
                     <button
                       onClick={() => setEditBirthdayCalendar('solar')}
                       className="px-3 py-1.5 text-xs transition-colors"
                       style={{
                         backgroundColor: editBirthdayCalendar === 'solar' ? appTheme.primary : 'transparent',
-                        color: editBirthdayCalendar === 'solar' ? '#fff' : `${appTheme.ink}60`,
+                        color: editBirthdayCalendar === 'solar' ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.38)}`,
                       }}
                     >阳历</button>
                     <button
@@ -709,7 +919,7 @@ export function RelationsPage() {
                       className="px-3 py-1.5 text-xs transition-colors"
                       style={{
                         backgroundColor: editBirthdayCalendar === 'lunar' ? appTheme.primary : 'transparent',
-                        color: editBirthdayCalendar === 'lunar' ? '#fff' : `${appTheme.ink}60`,
+                        color: editBirthdayCalendar === 'lunar' ? appTheme.onPrimary : `${withAlpha(appTheme.ink, 0.38)}`,
                       }}
                     >农历</button>
                   </div>
@@ -721,41 +931,31 @@ export function RelationsPage() {
                     placeholder="年份"
                     min="1900" max="2100"
                     className="w-20 text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                    style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}08` }}
+                    style={{ color: appTheme.ink, backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}
                   />
-                  <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>年</span>
+                  <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>年</span>
                   {/* 月份 */}
-                  <select
+                  <Select
                     value={editBirthdayMonth}
-                    onChange={(e) => setEditBirthdayMonth(e.target.value)}
-                    className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                    style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}0D` }}
-                  >
-                    <option value="">月</option>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>{i + 1}</option>
-                    ))}
-                  </select>
-                  <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>月</span>
+                    onChange={setEditBirthdayMonth}
+                    placeholder="月"
+                    options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                  />
+                  <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>月</span>
                   {/* 日期 */}
-                  <select
+                  <Select
                     value={editBirthdayDay}
-                    onChange={(e) => setEditBirthdayDay(e.target.value)}
-                    className="custom-select text-sm rounded-lg px-2 py-1.5 focus:outline-none"
-                    style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}0D` }}
-                  >
-                    <option value="">日</option>
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>{i + 1}</option>
-                    ))}
-                  </select>
-                  <span className="text-sm" style={{ color: `${appTheme.ink}40` }}>日</span>
+                    onChange={setEditBirthdayDay}
+                    placeholder="日"
+                    options={Array.from({ length: daysInMonth(editBirthdayYear, editBirthdayMonth) }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                  />
+                  <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.25)}` }}>日</span>
                 </div>
               </div>
 
               {/* 联系方式 */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>联系方式</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>联系方式</label>
                 <div className="space-y-2">
                   {editContactMethods.map((m, i) => (
                     <MethodRow
@@ -768,7 +968,7 @@ export function RelationsPage() {
                       }}
                       onRemove={() => setEditContactMethods(editContactMethods.filter((_, j) => j !== i))}
                       textColor={appTheme.ink}
-                      bgColor={`${appTheme.ink}08`}
+                      bgColor={`${withAlpha(appTheme.ink, 0.03)}`}
                     />
                   ))}
                 </div>
@@ -783,83 +983,92 @@ export function RelationsPage() {
 
               {/* 备注 */}
               <div>
-                <label className="block text-sm mb-1.5" style={{ color: `${appTheme.ink}60` }}>备注</label>
+                <label className="block text-sm mb-1.5" style={{ color: `${withAlpha(appTheme.ink, 0.38)}` }}>备注</label>
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   placeholder="备注..."
                   rows={3}
                   className="w-full text-base rounded-2xl px-4 py-3 focus:outline-none resize-none"
-                  style={{ color: appTheme.ink, backgroundColor: `${appTheme.ink}08` }}
+                  style={{ color: appTheme.ink, backgroundColor: `${withAlpha(appTheme.ink, 0.03)}` }}
                 />
               </div>
+                </>
+              )}
             </div>
 
             {/* 底部按钮 */}
-            <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${appTheme.ink}15` }}>
-              <button
-                onClick={handleDelete}
-                className="px-5 py-3 rounded-full flex items-center gap-2 transition-colors"
-                style={{ color: appTheme.danger, backgroundColor: `${appTheme.danger}20` }}
-              >
-                <Trash2 size={16} />
-                删除
-              </button>
-              <button
-                onClick={closeDetail}
-                className="flex-1 py-3 rounded-full transition-colors"
-                style={{ backgroundColor: appTheme.primary, color: '#fff' }}
-              >
-                完成
-              </button>
+            <div className="p-6 flex gap-3" style={{ borderTop: `1px solid ${withAlpha(appTheme.ink, 0.08)}` }}>
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex-1 py-3 rounded-full transition-colors"
+                    style={{ color: `${withAlpha(appTheme.ink, 0.5)}`, backgroundColor: `${withAlpha(appTheme.ink, 0.06)}` }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={!editName.trim() || saveStatus === 'saving'}
+                    className="flex-1 py-3 rounded-full text-white transition-colors disabled:opacity-30"
+                    style={{ backgroundColor: appTheme.primary }}
+                  >
+                    {saveStatus === 'saving' ? '保存中...' : '保存'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleDelete}
+                    className="px-5 py-3 rounded-full flex items-center gap-2 transition-colors"
+                    style={{ color: appTheme.danger, backgroundColor: `${withAlpha(appTheme.danger, 0.13)}` }}
+                  >
+                    <Trash2 size={16} />
+                    删除
+                  </button>
+                  <button
+                    onClick={closeDetail}
+                    className="flex-1 py-3 rounded-full transition-colors"
+                    style={{ backgroundColor: appTheme.primary, color: appTheme.onPrimary }}
+                  >
+                    完成
+                  </button>
+                </>
+              )}
             </div>
         </div>
       </div>
       )}
 
+      {/* 删除确认 */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setShowDeleteConfirm(false)}>
+          <div className="rounded-2xl p-6 mx-4 w-[320px]" style={{ backgroundColor: appTheme.canvas }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-base mb-6" style={{ color: `${withAlpha(appTheme.ink, 0.7)}` }}>确定要删除 {selectedContact?.name} 吗？一旦删除，就不能回来了。</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+                style={{ color: `${withAlpha(appTheme.ink, 0.5)}`, backgroundColor: `${withAlpha(appTheme.ink, 0.06)}` }}>
+                取消
+              </button>
+              <button onClick={executeDelete}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+                style={{ backgroundColor: appTheme.danger, color: '#fff' }}>
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[60] bg-black/80 text-white px-6 py-3 rounded-2xl text-sm max-w-[500px]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-black/80 text-white px-6 py-3 rounded-2xl text-sm max-w-[500px]" role="alert" aria-live="polite">
           {toast}
         </div>
       )}
 
-      {/* 滑入动画 + 日期输入样式 */}
-      <style>{`
-        @keyframes slide-in {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        .animate-slide-in {
-          animation: slide-in 0.25s ease-out;
-        }
-        .date-input {
-          -webkit-appearance: none;
-          appearance: none;
-          background: transparent;
-          border: none;
-          outline: none;
-          font-family: inherit;
-          font-size: inherit;
-          color: inherit;
-          cursor: pointer;
-        }
-        .date-input::-webkit-calendar-picker-indicator {
-          opacity: 0.4;
-          cursor: pointer;
-          filter: grayscale(1);
-        }
-        .date-input::-webkit-calendar-picker-indicator:hover {
-          opacity: 0.7;
-        }
-        select.custom-select {
-          cursor: pointer;
-        }
-        select.custom-select option {
-          color: ${appTheme.ink};
-          background: ${appTheme.canvas};
-        }
-      `}</style>
     </PageContainer>
   );
 }

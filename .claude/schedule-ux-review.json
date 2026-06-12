@@ -1,0 +1,153 @@
+{
+  "slopVerdict": {
+    "isAiSlop": false,
+    "findings": [
+      "CountdownList cards use a 4px left-border accent stripe (borderLeft: '4px solid') -- a direct hit against the side-stripe border ban. This is the single clearest AI-slop pattern.",
+      "AgendaView event rows use a dedicated 4px-wide color bar div (w-1 h-8) on the left side of each row. Visual result is identical to a left accent stripe.",
+      "CalendarList pills use 'tracking-wider' on small body text. Borders on the 'tiny tracked eyebrow' pattern but stops short since the text is neither uppercase nor a section label.",
+      "No gradient text, no hero-metric template, no numbered section markers, and no glassmorphism-as-default were found. The .glass utility exists in global.css but is unused on this page."
+    ]
+  },
+  "heuristicScores": {
+    "1": 3,
+    "2": 3,
+    "3": 2,
+    "4": 2,
+    "5": 2,
+    "6": 3,
+    "7": 3,
+    "8": 2,
+    "9": 1,
+    "10": 1
+  },
+  "cognitiveLoad": {
+    "failedChecks": [
+      "Single focus -- 4 stacked control rows (NavBar, view switcher, calendar filter pills, date navigator) before any calendar content appears, plus a FAB.",
+      "Minimal choices (<=4) -- view switcher has 5 modes; calendar filters have N+1 pills. Combined decision surface is wide.",
+      "Working memory demands -- calendar colors lack a persistent legend; users must remember color-to-calendar mappings across sessions.",
+      "Visual hierarchy -- all 4 control rows use similar visual weight (rounded-full pills, subtle backgrounds), creating an undifferentiated toolbar blob."
+    ],
+    "decisionPointsOver4": [
+      "View mode switcher: 5 modes (day/week/month/agenda/countdown) in one pill group",
+      "EventForm: 5 input sections with repeat spawning 2 nested sub-choices (interval + weekday multi-select)",
+      "EventDetail edit mode: 6 editable fields + 3 action buttons in one panel",
+      "CalendarManagerModal: calendar list with per-item edit/delete + create-new (name + 15-color picker)"
+    ]
+  },
+  "emotionalJourney": "The calendar page is competent but emotionally flat. The countdown view is the only screen that creates genuine affect via anticipation ('X days until...'). Every other view reads as a standard productivity widget. The brand promise is 'tranquil companion,' but the page delivers 'efficient scheduler.' Four rows of chrome before content, cramped month cells with 10px text, and a 1200px scrollable time grid create density that works against the serene tone. The delete-confirmation modal-within-modal for recurring events is a clear emotional valley -- anxiety about data loss compounded by nested-dialog navigation. Peak moments are scarce; even creating an event is just a form. The red current-time line is the one small 'alive' detail connecting the interface to the real world.",
+  "strengths": [
+    "The event overlap layout algorithm (scheduleLayout.ts) solves a genuinely hard problem. Side-by-side columns for overlapping events, with task_sync grouping beneath regular events, is intelligent information design that reduces visual chaos on the time grid.",
+    "The view mode architecture is well-structured -- DayView reuses the same time-grid rendering as WeekView (both import EventBlock and scheduleLayout), and the 'previousView' state pattern correctly returns the user to their prior context. Clean engineering.",
+    "The calendar color filter with horizontal scroll + mouse-wheel hijack is a thoughtful interaction for power users with many calendars. It surfaces a complex filtering need compactly."
+  ],
+  "priorityIssues": [
+    {
+      "severity": "P0",
+      "what": "4 rows of chrome stacked before calendar content (~160px of controls on a page with a 44px navbar)",
+      "why": "On a laptop screen, users see mostly controls, not their schedule. The calendar grid starts below the fold.",
+      "fix": "Merge view switcher and date navigator into one row. Move calendar filter pills into a collapsible dropdown triggered by a single chip. Reduce 4 rows to 2 (NavBar + unified toolbar)."
+    },
+    {
+      "severity": "P0",
+      "what": "Side-stripe accent borders on CountdownList cards (4px left border) and AgendaView event rows (4px color bar div)",
+      "why": "This is the single most recognizable AI-slop pattern. It signals template-generated dashboard and undermines the bespoke feel the brand demands.",
+      "fix": "Replace with a small colored dot/badge or use the event color as a subtle background tint on the row/card rather than as a border stripe."
+    },
+    {
+      "severity": "P1",
+      "what": "Inconsistent modal border-radius: EventForm uses rounded-[18px], EventDetail rounded-2xl (16px), CalendarManagerModal rounded-2xl, CountdownForm rounded-2xl. Input radius also varies (rounded-2xl vs rounded-xl).",
+      "why": "The design system defines 20px card radius (rounded-[20px]) but no component consistently hits it. The 2-4px variation feels like a mistake, eroding quality perception.",
+      "fix": "Pick one modal radius (16px or 20px) and one input radius (12px or 14px). Enforce across all schedule components. Remove rounded-[18px] entirely."
+    },
+    {
+      "severity": "P1",
+      "what": "MonthView cells display event pills at 10px font with break-all wrapping, cramming up to 3 events plus '+N more' into 80px-tall cells",
+      "why": "Unreadable. 10px Chinese text is below Apple HIG minimum. Users cannot read event titles without clicking through to day view, defeating the scanning purpose of month view.",
+      "fix": "Show only the event color dot (no title) in month cells, or show only one truncated title. Move full event list to a tooltip on hover. Increase min cell height to at least 100px."
+    },
+    {
+      "severity": "P1",
+      "what": "No time validation on event creation/edit -- users can set end time before start time with no warning",
+      "why": "Invalid time ranges create events with zero or negative height on the time grid, producing confusing visual artifacts or layout failures.",
+      "fix": "Add inline validation: if end_at <= start_at, show error below the end time input and disable save."
+    },
+    {
+      "severity": "P2",
+      "what": "Error/status messages auto-dismiss after 3 seconds with no retrieval mechanism",
+      "why": "If a user looks away, the feedback is gone. Import results ('imported 12, skipped 3') are meaningful and should persist until dismissed.",
+      "fix": "Keep status messages visible until user dismisses them or the next action replaces them. Use a non-blocking toast with a close button."
+    },
+    {
+      "severity": "P2",
+      "what": "RRULE displayed as raw iCal string (e.g., 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR') in EventDetail view mode",
+      "why": "Developer-facing notation. Non-technical users see gibberish where they expect a human-readable description.",
+      "fix": "Parse the RRULE and render a localized description (e.g., '每两周的周一、周三、周五'). Fall back to raw display only for unparseable rules."
+    },
+    {
+      "severity": "P2",
+      "what": "Modal stacking in EventDetail: scope-choice modal (z-60) opens inside the existing EventDetail modal (z-50) for recurring events",
+      "why": "Nested modals are disorienting. The inner backdrop (bg-black/50) sits on top of the outer modal. Which modal closes on Escape is ambiguous.",
+      "fix": "Replace the scope-choice modal with an inline expandable section inside the EventDetail panel. Show '仅此一次' / '所有实例' as radio-style buttons that appear inline."
+    },
+    {
+      "severity": "P3",
+      "what": "FAB bottom position hardcoded as bottom-[72px] with no reference to a shared nav-height token",
+      "why": "If the tab bar height changes, the FAB either overlaps the bar or floats too high. Magic numbers create fragile layout.",
+      "fix": "Use a CSS variable or shared constant for the bottom tab bar height."
+    },
+    {
+      "severity": "P3",
+      "what": "No keyboard support: Tab navigation, Escape-to-close, arrow keys for date nav, keyboard shortcut for new event",
+      "why": "Power users (Alex) lose efficiency. The most-used controls should be operable without the mouse.",
+      "fix": "ArrowLeft/Right for prev/next; Escape to close modals; Ctrl+N for new event; T for today."
+    }
+  ],
+  "personaRedFlags": {
+    "Alex": [
+      "No keyboard shortcuts for any calendar operation (navigation, creation, view switching)",
+      "Cannot create an event by clicking/dragging on the time grid -- must always use FAB -> form modal",
+      "No search or text filter for events across all views",
+      "No week number display option in month/week views",
+      "1200px fixed grid height makes scrolling a full day tedious -- no 'jump to hour' shortcut"
+    ],
+    "Jordan": [
+      "5 view modes presented without explanation of what each is best for",
+      "Dashed-border convention for task_sync events is never explained",
+      "Calendar management requires finding a small gear icon in the filter row -- low discoverability",
+      "Recurring event scope choice is a conceptually hard decision presented without context about consequences",
+      "No onboarding explaining what ICS files are or where to get them"
+    ],
+    "Sam": [
+      "10px font sizes in month event pills, time axis labels, and manager hint text violate WCAG minimum text size",
+      "No visible focus indicators on any interactive elements -- keyboard-only users cannot track their position",
+      "Color is the only differentiator for calendar categories -- colorblind users cannot distinguish events from different calendars",
+      "Red current-time line uses color alone to convey time position (no pattern, no label)",
+      "No aria-labels, roles, or semantic HTML in any component -- screen readers get no structural information",
+      "inkMuted48 at 30% opacity on dark bg yields approximately 3.2:1 contrast ratio, below WCAG AA for normal text"
+    ],
+    "Casey": [
+      "Desktop-only design with no responsive breakpoints in calendar views -- 7-column week grid would be unusable on a phone",
+      "Horizontal-scrolling calendar filter requires trackpad gesture or Shift+scroll, undiscoverable on mobile",
+      "FAB position hardcoded for desktop tab bar -- needs recalculation for mobile safe areas",
+      "1200px fixed grid height requires extreme vertical scrolling on any screen smaller than ~1300px viewport height",
+      "Modal widths (380-420px) are desktop-optimized -- on a 375px phone they would overflow"
+    ]
+  },
+  "minorObservations": [
+    "The empty comment '{/* end min-w wrapper */}' and '{/* end min-w wrapper */}' appear in WeekView.tsx (line 288) and MonthView.tsx (line 140) but the wrapping divs they refer to were apparently removed -- these are stale comments.",
+    "The 'Import' button sits in DateNavigator alongside navigation controls, but importing is a data action, not a navigation action. It belongs in a toolbar or settings area, not next to prev/next/today.",
+    "EventBlock's contrast-color function uses a 0.5 luminance threshold (WCAG uses relative luminance formula which is slightly different). For some mid-brightness colors, text contrast may be marginal.",
+    "The '40 minutes default duration' when creating events is an arbitrary choice with no user-facing rationale. If a user typically creates 1-hour meetings, they must adjust the end time every time.",
+    "The notification checker in index.tsx runs on every schedules change and just console.logs -- it appears to be a stub. If notifications are not yet implemented, remove the stub to avoid confusion.",
+    "DayView passes `schedules` (unfiltered) while all other views pass `filteredSchedules` -- this appears to be a bug where calendar visibility filtering is bypassed in day view.",
+    "MonthView has a 6-week fixed grid (42 cells) regardless of month length -- months like February 2021 (4 rows) will show 2 empty weeks at the bottom, creating visual dead space.",
+    "The green-tinted grid lines in week/day views (primary color at 20% opacity) create a subtle but pleasant 'firefly grid' effect that aligns well with the brand. More of the page should lean into this kind of poetic detail."
+  ],
+  "questions": [
+    "Should the countdown view be a separate top-level page rather than a calendar view mode? It has different data semantics (no time-of-day, no recurrence, different creation flow) and its own modal. Its presence in the view switcher suggests it is a calendar mode, but it is functionally a separate feature.",
+    "What is the purpose of the 'task_sync' event type? The dashed border and bottom indicator bar are clearly intentional, but without explanation they read as a bug. If this is an AI-generated event from tasks, should it even appear on the calendar grid, or would a side-panel 'suggested times' view be clearer?",
+    "The night-compression feature (hourToPercent in scheduleLayout.ts) compresses hours 0-7 into 10% of the vertical space. Is this solving a real problem, or is it premature optimization? Most users are asleep during these hours and would have no events there. The compressed zone just adds visual complexity to the time axis.",
+    "Does the calendar need all 5 view modes at launch? Could 'day' be accessed only by clicking a day cell in month/week, and 'agenda' be a filtered state of the upcoming-events list on the home dashboard? Reducing to 3 primary modes (week/month/countdown) would dramatically simplify the chrome.",
+    "The app stores diary data as .md files for user portability. Should calendar data follow the same philosophy (ICS file as source of truth) rather than being locked in SQLite? This would make the import feature the primary data path rather than an edge case."
+  ]
+}

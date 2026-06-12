@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { HabitWithStreak, WeekMatrix, CreateHabitInput, UpdateHabitInput } from '@/types/habit';
+import type { CompleteResult } from '@/types/task';
 import * as habitService from '@/services/habitService';
+import { triggerSync } from '@/stores/syncStore';
 
 interface HabitState {
   habits: HabitWithStreak[];
@@ -9,7 +11,7 @@ interface HabitState {
   error: string | null;
 
   fetchAll: () => Promise<void>;
-  checkHabit: (habitId: string) => Promise<void>;
+  checkHabit: (habitId: string) => Promise<CompleteResult>;
   uncheckHabit: (habitId: string) => Promise<void>;
   createHabit: (input: CreateHabitInput) => Promise<void>;
   updateHabit: (id: string, input: UpdateHabitInput) => Promise<void>;
@@ -37,11 +39,13 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   checkHabit: async (habitId) => {
     try {
-      await habitService.checkHabit(habitId);
-      // 刷新
+      const result = await habitService.checkHabit(habitId);
       await get().fetchAll();
+      triggerSync();
+      return result;
     } catch (e) {
       set({ error: String(e) });
+      throw e;
     }
   },
 
@@ -49,6 +53,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await habitService.uncheckHabit(habitId);
       await get().fetchAll();
+      triggerSync();
     } catch (e) {
       set({ error: String(e) });
     }
@@ -58,6 +63,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await habitService.createHabit(input);
       await get().fetchAll();
+      triggerSync();
     } catch (e) {
       set({ error: String(e) });
       throw e;
@@ -68,6 +74,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await habitService.updateHabit(id, input);
       await get().fetchAll();
+      triggerSync();
     } catch (e) {
       set({ error: String(e) });
       throw e;
@@ -78,6 +85,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await habitService.deleteHabit(id);
       await get().fetchAll();
+      triggerSync();
     } catch (e) {
       set({ error: String(e) });
     }

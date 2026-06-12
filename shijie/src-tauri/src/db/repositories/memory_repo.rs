@@ -27,7 +27,7 @@ fn memory_from_row(row: &Row) -> rusqlite::Result<Memory> {
 }
 
 fn now() -> String {
-    chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f").to_string()
+    chrono::Local::now().to_rfc3339()
 }
 
 fn gen_id() -> String {
@@ -63,23 +63,20 @@ pub fn create_memory(
 }
 
 pub fn list_memories(conn: &Connection, memory_type_filter: Option<&str>) -> Result<Vec<Memory>, String> {
-    let (sql, has_filter) = if memory_type_filter.is_some() {
-        (format!("SELECT {} FROM ai_memories WHERE memory_type = ?1 ORDER BY created_at DESC", COLUMNS), true)
-    } else {
-        (format!("SELECT {} FROM ai_memories ORDER BY created_at DESC", COLUMNS), false)
-    };
-
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to list memories: {}", e))?;
-
     let mut memories = Vec::new();
-    if has_filter {
+
+    if let Some(filter) = memory_type_filter {
+        let sql = format!("SELECT {} FROM ai_memories WHERE memory_type = ?1 AND deleted_at IS NULL ORDER BY created_at DESC", COLUMNS);
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to list memories: {}", e))?;
         let rows = stmt
-            .query_map(params![memory_type_filter.unwrap()], |row| memory_from_row(row))
+            .query_map(params![filter], |row| memory_from_row(row))
             .map_err(|e| format!("Failed to query memories: {}", e))?;
         for row in rows {
             memories.push(row.map_err(|e| format!("Failed to read memory: {}", e))?);
         }
     } else {
+        let sql = format!("SELECT {} FROM ai_memories WHERE deleted_at IS NULL ORDER BY created_at DESC", COLUMNS);
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to list memories: {}", e))?;
         let rows = stmt
             .query_map([], |row| memory_from_row(row))
             .map_err(|e| format!("Failed to query memories: {}", e))?;
@@ -95,30 +92,21 @@ pub fn search_memories(
     query: &str,
     memory_type_filter: Option<&str>,
 ) -> Result<Vec<Memory>, String> {
-    let (sql, has_filter) = if memory_type_filter.is_some() {
-        (
-            format!("SELECT {} FROM ai_memories WHERE content LIKE ?1 AND memory_type = ?2 ORDER BY created_at DESC", COLUMNS),
-            true,
-        )
-    } else {
-        (
-            format!("SELECT {} FROM ai_memories WHERE content LIKE ?1 ORDER BY created_at DESC", COLUMNS),
-            false,
-        )
-    };
-
     let pattern = format!("%{}%", query);
-    let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to search memories: {}", e))?;
-
     let mut memories = Vec::new();
-    if has_filter {
+
+    if let Some(filter) = memory_type_filter {
+        let sql = format!("SELECT {} FROM ai_memories WHERE content LIKE ?1 AND memory_type = ?2 AND deleted_at IS NULL ORDER BY created_at DESC", COLUMNS);
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to search memories: {}", e))?;
         let rows = stmt
-            .query_map(params![pattern, memory_type_filter.unwrap()], |row| memory_from_row(row))
+            .query_map(params![pattern, filter], |row| memory_from_row(row))
             .map_err(|e| format!("Failed to query memories: {}", e))?;
         for row in rows {
             memories.push(row.map_err(|e| format!("Failed to read memory: {}", e))?);
         }
     } else {
+        let sql = format!("SELECT {} FROM ai_memories WHERE content LIKE ?1 AND deleted_at IS NULL ORDER BY created_at DESC", COLUMNS);
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to search memories: {}", e))?;
         let rows = stmt
             .query_map(params![pattern], |row| memory_from_row(row))
             .map_err(|e| format!("Failed to query memories: {}", e))?;
@@ -130,14 +118,15 @@ pub fn search_memories(
 }
 
 pub fn get_memory(conn: &Connection, id: &str) -> Result<Memory, String> {
-    let sql = format!("SELECT {} FROM ai_memories WHERE id = ?1", COLUMNS);
+    let sql = format!("SELECT {} FROM ai_memories WHERE id = ?1 AND deleted_at IS NULL", COLUMNS);
     conn.query_row(&sql, params![id], |row| memory_from_row(row))
         .map_err(|e| format!("Memory not found: {}", e))
 }
 
 pub fn delete_memory(conn: &Connection, id: &str) -> Result<(), String> {
+    let time = now();
     let affected = conn
-        .execute("DELETE FROM ai_memories WHERE id = ?1", params![id])
+        .execute("UPDATE ai_memories SET deleted_at = ?1 WHERE id = ?2", params![time, id])
         .map_err(|e| format!("Failed to delete memory: {}", e))?;
     if affected == 0 {
         return Err(format!("Memory not found: {}", id));
@@ -147,7 +136,7 @@ pub fn delete_memory(conn: &Connection, id: &str) -> Result<(), String> {
 
 pub fn list_memories_for_injection(conn: &Connection, limit: i32) -> Result<Vec<Memory>, String> {
     let sql = format!(
-        "SELECT {} FROM ai_memories ORDER BY created_at DESC LIMIT ?1",
+        "SELECT {} FROM ai_memories WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT ?1",
         COLUMNS
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| format!("Failed to list memories for injection: {}", e))?;
@@ -162,6 +151,6 @@ pub fn list_memories_for_injection(conn: &Connection, limit: i32) -> Result<Vec<
 }
 
 pub fn count_memories(conn: &Connection) -> Result<i32, String> {
-    conn.query_row("SELECT COUNT(*) FROM ai_memories", [], |row| row.get(0))
+    conn.query_row("SELECT COUNT(*) FROM ai_memories WHERE deleted_at IS NULL", [], |row| row.get(0))
         .map_err(|e| format!("Failed to count memories: {}", e))
 }

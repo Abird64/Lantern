@@ -1,18 +1,81 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Copy, StopCircle, Check, Star, ArrowUp } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Copy, StopCircle, Check, Star, ArrowUp, ImagePlus, X, Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
+import { compressImageForApi } from '@/utils/imageCompress';
+import * as aiService from '@/services/aiService';
 import remarkGfm from 'remark-gfm';
-import { LanternSvg, ShiningText } from '@/components/ui';
+import { LanternSvg, ShiningText, Fireflies, ImageViewer } from '@/components/ui';
+import { TypewriterText } from '@/components/ui/TypewriterText';
 import { ToolCallCard } from '@/components/ai/ToolCallCard';
 import { PromptPouch } from '@/components/ai/PromptPouch';
 import { useAiStore } from '@/stores/aiStore';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { useFavoriteStore } from '@/stores/favoriteStore';
 import { parseToolCalls } from '@/utils/aiParsers';
 import { BUILTIN_PROMPTS } from '@/utils/builtinPrompts';
 import type { PromptTemplate } from '@/utils/builtinPrompts';
+import { CREATIVITY_COLOR } from '@/styles/theme';
 import type { PageTheme } from '@/styles/theme';
 import type { RefObject, KeyboardEvent } from 'react';
+
+// ── 提灯轮播语 ──
+// 灵感来源：王者荣耀·桑启台词，经改编适配提灯产品语境
+const LANTERN_PROMPTS = [
+  // ── 萤火与故事 ──
+  '将沿途的故事一一记下',
+  '愿陪伴我的微光，也能照亮你的旅途',
+  '你的故事，已被我记下了',
+  '有故事和萤火的地方，就是家乡',
+  '与萤火一起，收集更多的故事',
+  '萤火虽小，愿为其芒',
+  '这一页故事讲完了，让我们翻开下一页',
+  '比风景更美的，是旅途中的人和故事',
+  '那些曾经历的，都将变成回忆，陪伴我们继续前行',
+  '当故事还在讲述，过去就还在传承',
+  '将过去讲给更多人听，或许是最好的铭记',
+  '你也有自己的萤火，只是暂时看不见而已',
+  '就算再小的萤光，也能凝成希望',
+  '故事总有结局，但那也是新故事的开始',
+  '羁绊发芽，故事生长',
+  '故事往往开始于相遇，但离别却并非结束',
+
+  // ── 夜与光 ──
+  '只要眼里有光，黑夜就永远不会降临',
+  '越是昏暗的夜，星星就越是美丽',
+  '最重要的东西，只有用心才能看见',
+  '远游山川，星河在天',
+  '太阳虽然下山，但青草，却在偷偷发芽',
+  '太阳熄灭的时候，群星就会苏醒',
+  '宇宙太黑，于是我们相互靠近，将彼此点亮',
+  '你相信有永远不会熄灭的光吗？我相信',
+  '萤火，就是故人的化身',
+  '洒下希望的种子',
+  '流光一瞬',
+  '风生万物',
+
+  // ── 前行与勇气 ──
+  '最奇妙的旅行，往往开始于最不起眼的地方',
+  '与其担心美好会消逝，不如先让它开始',
+  '想得太多，你就会失去前行的勇气',
+  '心怀希望，勇敢道别',
+  '比起告别，我更害怕从未相遇',
+  '没关系，过去的没了，那就再建一个新的',
+  '向前看',
+  '乘风启程',
+  '一起去旅行吧',
+  '好好享受旅行的时光吧',
+
+  // ── 温柔日常 ──
+  '来，说说你的故事',
+  '提灯在此，愿闻其详',
+  '别难过，被泪水洗过的眼睛，会变得更干净',
+  '遇见你，感觉真好',
+  '又想起了一些过去的事',
+  '没什么，只是沙子迷住了眼',
+  '小草萌发，天地将绿',
+  '别怕，休息一下就好了',
+  '一株小草，也能改变一方世界',
+];
 
 async function copyText(text: string | null) {
   if (!text) return;
@@ -39,6 +102,7 @@ interface ChatViewProps {
   messagesEndRef: RefObject<HTMLDivElement | null>;
   handleSend: () => Promise<void>;
   handleKeyDown: (e: KeyboardEvent) => void;
+  isMobile?: boolean;
 }
 
 export function ChatView({
@@ -50,17 +114,26 @@ export function ChatView({
   messagesEndRef,
   handleSend,
   handleKeyDown,
+  isMobile = false,
 }: ChatViewProps) {
   const appTheme = useAppTheme();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const emptyStateRef = useRef<HTMLDivElement>(null);
+  // 图片 data URI 缓存：file_path → data_uri
+  const imageDataCache = useRef<Map<string, string>>(new Map());
+  const [, forceUpdate] = useState(0);
 
-  // 加载锦囊（内置 + 自定义）
+  // 加载锦囊（localStorage 为单一来源，首次已由设置页播种默认值）
   const allPrompts = useMemo(() => {
     try {
       const raw = localStorage.getItem('lantern_custom_prompts');
-      const custom: PromptTemplate[] = raw ? JSON.parse(raw) : [];
-      return [...BUILTIN_PROMPTS, ...custom].sort((a, b) => a.sort_order - b.sort_order);
+      if (raw) {
+        const prompts: PromptTemplate[] = JSON.parse(raw);
+        return prompts.sort((a, b) => a.sort_order - b.sort_order);
+      }
+      return [...BUILTIN_PROMPTS];
     } catch {
       return [...BUILTIN_PROMPTS];
     }
@@ -73,7 +146,13 @@ export function ChatView({
     isSending,
     isExecuting,
     error,
+    aiStatus,
+    streamingContent,
+    isStreaming,
+    pendingImages,
     stopGeneration,
+    addPendingImages,
+    removePendingImage,
     executeToolCalls,
     executeSingleToolCall,
     cancelToolCalls,
@@ -83,9 +162,46 @@ export function ChatView({
 
   const { toggleFavorite, isFavorited } = useFavoriteStore();
 
+  // ── 图片处理 ──
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** 处理图片文件选择（自动压缩） */
+  const handleImageFiles = useCallback(async (files: FileList | File[]) => {
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    const compressed = await Promise.all(imageFiles.map(f => compressImageForApi(f)));
+    addPendingImages(compressed);
+  }, [addPendingImages]);
+
+  /** 粘贴事件：检测图片并添加到待发送列表 */
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      handleImageFiles(imageFiles);
+    }
+  }, [handleImageFiles]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingContent]);
+
+  // 锦囊/粘贴等程序化输入后自动调整 textarea 高度
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const maxHeight = 22 * 4 + 16;
+    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
+  }, [input]);
 
   const handleCopy = useCallback(async (msgId: string, content: string | null) => {
     await copyText(content);
@@ -98,17 +214,25 @@ export function ChatView({
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {!currentConversation || messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center">
+          <div ref={emptyStateRef} className="h-full flex flex-col items-center justify-center relative">
+            <Fireflies count={7} mouseTarget={emptyStateRef} />
             <div className="relative w-[200px] h-[240px] flex items-center justify-center mb-6">
-              <div
-                className="absolute inset-0 blur-3xl opacity-40 rounded-full scale-110"
-                style={{ backgroundColor: `${t.accent}33` }}
-              />
+              {!isMobile && (
+                <div
+                  className="absolute inset-0 blur-3xl opacity-40 rounded-full scale-110"
+                  style={{ backgroundColor: `${withAlpha(t.accent, 0.2)}` }}
+                />
+              )}
               <LanternSvg accentColor={t.accent} isDark={t.isDark} />
             </div>
-            <p style={{ color: s(0.35) }} className="text-lg font-light">
-              提灯在等你说话呢
-            </p>
+            <TypewriterText
+              texts={LANTERN_PROMPTS}
+              typingSpeed={70}
+              deletingSpeed={30}
+              pauseDuration={3500}
+              className="text-lg font-light"
+              style={{ color: s(0.35) }}
+            />
           </div>
         ) : (
           <div className="max-w-[700px] mx-auto space-y-4">
@@ -131,7 +255,7 @@ export function ChatView({
                         className="chat-bubble markdown-body px-4 py-3 rounded-2xl text-sm leading-relaxed"
                         style={{
                           backgroundColor: isUser
-                            ? `${t.accent}33`
+                            ? `${withAlpha(t.accent, 0.2)}`
                             : isTool
                               ? s(0.03)
                               : s(0.08),
@@ -157,35 +281,79 @@ export function ChatView({
                             {msg.content}
                           </div>
                         ) : (
-                          msg.content || ''
+                          <>
+                            {/* 用户消息中的图片 */}
+                            {isUser && msg.images && (() => {
+                              try {
+                                const filePaths: string[] = JSON.parse(msg.images);
+                                return filePaths.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                    {filePaths.map((fp, idx) => {
+                                      const cached = imageDataCache.current.get(fp);
+                                      if (!cached) {
+                                        // 懒加载图片数据
+                                        aiService.getChatImageData(fp).then((dataUri) => {
+                                          imageDataCache.current.set(fp, dataUri);
+                                          forceUpdate((n) => n + 1);
+                                        });
+                                        return (
+                                          <div key={idx} className="w-20 h-20 rounded-lg flex items-center justify-center" style={{ backgroundColor: withAlpha(appTheme.ink, 0.05) }}>
+                                            <Loader2 size={16} className="animate-spin" style={{ color: withAlpha(appTheme.ink, 0.2) }} />
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <img
+                                          key={idx}
+                                          src={cached}
+                                          alt={`图片 ${idx + 1}`}
+                                          className="max-w-[180px] max-h-[120px] rounded-lg object-cover cursor-pointer"
+                                          style={{ border: `1px solid ${withAlpha(appTheme.ink, 0.1)}` }}
+                                          onClick={() => setViewingImage(cached)}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                ) : null;
+                              } catch { return null; }
+                            })()}
+                            {msg.content || ''}
+                          </>
                         )}
                       </div>
 
+                      {/* 移动端：始终显示操作按钮；桌面端：hover 显示 */}
                       {(isUser || msg.role === 'assistant') && msg.content && (
                         <div
-                          className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${
+                          className={`flex items-center gap-1 mt-1 ${
+                            isMobile ? '' : 'opacity-0 group-hover:opacity-100'
+                          } transition-opacity ${
                             isUser ? 'justify-end' : 'justify-start'
                           }`}
                         >
                           <button
                             onClick={() => handleCopy(msg.id, msg.content)}
-                            className="flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors min-w-[44px] min-h-[44px]"
                             style={{ color: s(0.25) }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = s(0.6);
-                              e.currentTarget.style.backgroundColor = s(0.08);
+                              if (!isMobile) {
+                                e.currentTarget.style.color = s(0.6);
+                                e.currentTarget.style.backgroundColor = s(0.08);
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = s(0.25);
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
+                              if (!isMobile) {
+                                e.currentTarget.style.color = s(0.25);
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }
                             }}
                             title="复制"
+                            aria-label="复制消息"
                           >
                             {copiedId === msg.id ? (
-                              <Check size={12} style={{ color: t.accent }} />
+                              <Check size={14} style={{ color: t.accent }} />
                             ) : (
-                              <Copy size={12} />
+                              <Copy size={14} />
                             )}
                           </button>
                           <button
@@ -200,31 +368,36 @@ export function ChatView({
                                 title,
                               );
                             }}
-                            className="flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors min-w-[44px] min-h-[44px]"
                             style={{
                               color: isFavorited(msg.id)
-                                ? '#E8B959'
+                                ? CREATIVITY_COLOR
                                 : s(0.25),
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = '#E8B959';
-                              e.currentTarget.style.backgroundColor = s(0.08);
+                              if (!isMobile) {
+                                e.currentTarget.style.color = CREATIVITY_COLOR;
+                                e.currentTarget.style.backgroundColor = s(0.08);
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = isFavorited(msg.id)
-                                ? '#E8B959'
-                                : s(0.25);
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
+                              if (!isMobile) {
+                                e.currentTarget.style.color = isFavorited(msg.id)
+                                  ? CREATIVITY_COLOR
+                                  : s(0.25);
+                                e.currentTarget.style.backgroundColor =
+                                  'transparent';
+                              }
                             }}
                             title={
                               isFavorited(msg.id) ? '取消收藏' : '收藏'
                             }
+                            aria-label={isFavorited(msg.id) ? '取消收藏' : '收藏'}
                           >
                             <Star
-                              size={12}
+                              size={14}
                               fill={
-                                isFavorited(msg.id) ? '#E8B959' : 'none'
+                                isFavorited(msg.id) ? CREATIVITY_COLOR : 'none'
                               }
                             />
                           </button>
@@ -303,7 +476,27 @@ export function ChatView({
                 </div>
               );
             })}
-            {isSending && (
+            {/* 流式内容 */}
+            {isStreaming && streamingContent && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%]">
+                  <div
+                    className="chat-bubble markdown-body px-4 py-3 rounded-2xl text-sm leading-relaxed"
+                    style={{
+                      backgroundColor: s(0.08),
+                      color: s(0.8),
+                      borderBottomLeftRadius: '4px',
+                    }}
+                  >
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {streamingContent}
+                    </Markdown>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* 状态指示器 */}
+            {isSending && !isStreaming && (
               <div className="flex justify-start">
                 <div
                   className="px-4 py-3 rounded-2xl"
@@ -312,7 +505,7 @@ export function ChatView({
                     borderBottomLeftRadius: '4px',
                   }}
                 >
-                  <ShiningText text="思考中..." />
+                  <ShiningText text={aiStatus || "输入中..."} />
                 </div>
               </div>
             )}
@@ -334,8 +527,10 @@ export function ChatView({
         </div>
       )}
 
-      {/* 底部输入区 */}
-      <div className="px-6 pb-6 pt-3 flex-shrink-0">
+      {/* 底部输入区 — adjustResize 下 flex 布局自动跟随键盘 */}
+      <div
+        className="px-6 pt-3 pb-4 flex-shrink-0"
+      >
         {/* 锦囊胶囊 — 聚焦时浮现 */}
         <div
           className="max-w-[640px] mx-auto overflow-hidden transition-all duration-300 ease-out"
@@ -357,11 +552,11 @@ export function ChatView({
         <div
           className="relative max-w-[640px] mx-auto rounded-3xl transition-shadow duration-300 group"
           style={{
-            backgroundColor: `${appTheme.ink}0A`,
-            border: `1px solid ${appTheme.ink}14`,
+            backgroundColor: `${withAlpha(appTheme.ink, 0.04)}`,
+            border: `1px solid ${withAlpha(appTheme.ink, 0.08)}`,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = `0 0 0 1px ${appTheme.primary}30, 0 0 12px ${appTheme.primary}18`;
+            e.currentTarget.style.boxShadow = `0 0 0 1px ${withAlpha(appTheme.primary, 0.19)}, 0 0 12px ${withAlpha(appTheme.primary, 0.09)}`;
           }}
           onMouseLeave={(e) => {
             if (document.activeElement !== inputRef.current) {
@@ -369,22 +564,72 @@ export function ChatView({
             }
           }}
         >
-          {/* 玻璃态背景 */}
-          <div
-            className="absolute inset-0 rounded-3xl pointer-events-none"
-            style={{
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-            }}
-          />
+          {/* 玻璃态背景 - 移动端不用 backdrop-filter（Android WebView CPU 渲染导致卡顿） */}
+          {!isMobile && (
+            <div
+              className="absolute inset-0 rounded-3xl pointer-events-none"
+              style={{
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+              }}
+            />
+          )}
 
-          <div className="relative flex items-end">
+          {/* 图片预览条 */}
+          {pendingImages.length > 0 && (
+            <div className="flex items-center gap-2 px-3 pt-2 pb-1 overflow-x-auto">
+              {pendingImages.map((img, idx) => (
+                <div key={idx} className="relative flex-shrink-0 group/img">
+                  <img
+                    src={img}
+                    alt={`待发送 ${idx + 1}`}
+                    className="w-14 h-14 rounded-lg object-cover"
+                    style={{ border: `1px solid ${withAlpha(appTheme.ink, 0.1)}` }}
+                  />
+                  <button
+                    onClick={() => removePendingImage(idx)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/60 text-white"
+                    aria-label="移除图片"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="relative flex items-center">
+            {/* 隐藏的文件选择器 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) handleImageFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            {/* 图片选择按钮 */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending}
+              className="flex-shrink-0 m-1.5 h-8 w-8 flex items-center justify-center rounded-full transition-colors disabled:opacity-30"
+              style={{ color: appTheme.inkMuted48 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = appTheme.ink; e.currentTarget.style.backgroundColor = withAlpha(appTheme.ink, 0.08); }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = appTheme.inkMuted48; e.currentTarget.style.backgroundColor = 'transparent'; }}
+              title="添加图片"
+              aria-label="添加图片"
+            >
+              <ImagePlus size={16} />
+            </button>
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                // auto-resize
+                // auto-resize: reset to 1 line, then grow to fit (max 4 lines)
                 const ta = e.target;
                 ta.style.height = 'auto';
                 const lineHeight = 22;
@@ -392,6 +637,7 @@ export function ChatView({
                 ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
               }}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={isSending ? '等待回复中...' : '说点什么...'}
               disabled={isSending}
               rows={1}
@@ -401,15 +647,18 @@ export function ChatView({
                 lineHeight: '22px',
                 maxHeight: '104px',
               }}
+              aria-label="输入消息"
               onFocus={(e) => {
                 setIsInputFocused(true);
-                e.currentTarget.parentElement!.parentElement!.style.boxShadow = `0 0 0 1px ${appTheme.primary}40, 0 0 16px ${appTheme.primary}20`;
+                const el = e.currentTarget.parentElement?.parentElement;
+                if (el) el.style.boxShadow = `0 0 0 1px ${withAlpha(appTheme.primary, 0.25)}, 0 0 16px ${withAlpha(appTheme.primary, 0.13)}`;
               }}
               onBlur={(e) => {
                 // 延迟隐藏，让锦囊点击事件先触发
                 setTimeout(() => {
                   setIsInputFocused(false);
-                  e.currentTarget.parentElement!.parentElement!.style.boxShadow = 'none';
+                  const el = e.currentTarget.parentElement?.parentElement;
+                  if (el) el.style.boxShadow = 'none';
                 }, 150);
               }}
             />
@@ -419,25 +668,28 @@ export function ChatView({
                 onClick={stopGeneration}
                 className="flex-shrink-0 m-1.5 h-8 w-8 flex items-center justify-center rounded-full transition-colors bg-red-500/15 text-red-400 hover:bg-red-500/25"
                 title="中断生成"
+                aria-label="中断生成"
               >
                 <StopCircle size={16} />
               </button>
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim()}
+                disabled={!input.trim() && pendingImages.length === 0}
                 className="flex-shrink-0 m-1.5 h-8 w-8 flex items-center justify-center rounded-full transition-all"
                 style={{
-                  backgroundColor: input.trim() ? appTheme.primary : `${appTheme.ink}1A`,
-                  color: input.trim() ? appTheme.onPrimary : appTheme.inkMuted48,
-                  cursor: input.trim() ? 'pointer' : 'not-allowed',
+                  backgroundColor: (input.trim() || pendingImages.length > 0) ? appTheme.primary : `${withAlpha(appTheme.ink, 0.1)}`,
+                  color: (input.trim() || pendingImages.length > 0) ? appTheme.onPrimary : appTheme.inkMuted48,
+                  cursor: (input.trim() || pendingImages.length > 0) ? 'pointer' : 'not-allowed',
                 }}
+                title="发送消息"
+                aria-label="发送消息"
                 onMouseEnter={(e) => {
-                  if (input.trim())
+                  if (input.trim() || pendingImages.length > 0)
                     e.currentTarget.style.backgroundColor = appTheme.primaryFocus;
                 }}
                 onMouseLeave={(e) => {
-                  if (input.trim())
+                  if (input.trim() || pendingImages.length > 0)
                     e.currentTarget.style.backgroundColor = appTheme.primary;
                 }}
               >
@@ -447,6 +699,12 @@ export function ChatView({
           </div>
         </div>
       </div>
+
+      {/* 图片查看大图 */}
+      <ImageViewer
+        src={viewingImage}
+        onClose={() => setViewingImage(null)}
+      />
     </>
   );
 }

@@ -47,6 +47,8 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
             task_id         TEXT NOT NULL,
             skill_id        TEXT NOT NULL,
             xp_amount       INTEGER DEFAULT 0,
+            created_at      TEXT NOT NULL DEFAULT '',
+            updated_at      TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
             FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE,
             UNIQUE(task_id, skill_id)
@@ -377,6 +379,113 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         rusqlite::params![nanoid::nanoid!()],
     );
 
+    // 增量迁移：心愿表（心愿夹系统）
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS wishes (
+            id              TEXT PRIMARY KEY,
+            title           TEXT NOT NULL,
+            description     TEXT,
+            level           INTEGER NOT NULL DEFAULT 1,
+            cost_glow       INTEGER NOT NULL DEFAULT 0,
+            quantity        INTEGER DEFAULT -1,
+            achieved_count  INTEGER DEFAULT 0,
+            status          TEXT NOT NULL DEFAULT 'active',
+            achieved_at     TEXT,
+            sort_order      INTEGER DEFAULT 0,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            deleted_at      TEXT
+        )",
+        [],
+    );
+    // 为已有表添加 quantity 列
+    let _ = conn.execute(
+        "ALTER TABLE wishes ADD COLUMN quantity INTEGER DEFAULT -1",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE wishes ADD COLUMN achieved_count INTEGER DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wishes_level ON wishes(level)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wishes_status ON wishes(status)",
+        [],
+    );
+
+    // 增量迁移：抽奖记录表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS wish_draws (
+            id              TEXT PRIMARY KEY,
+            draw_type       TEXT NOT NULL DEFAULT 'micro',
+            ticket_type     TEXT NOT NULL DEFAULT 'micro',
+            cost            INTEGER NOT NULL DEFAULT 0,
+            result_wish_id  TEXT,
+            result_type     TEXT DEFAULT 'none',
+            pity_count      INTEGER DEFAULT 0,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            FOREIGN KEY (result_wish_id) REFERENCES wishes(id) ON DELETE SET NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wish_draws_type ON wish_draws(draw_type)",
+        [],
+    );
+
+    // 增量迁移：萤火余额表（用户虚拟货币）
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS glow_balances (
+            id              TEXT PRIMARY KEY,
+            glow_amount     INTEGER NOT NULL DEFAULT 0,
+            micro_tickets   INTEGER NOT NULL DEFAULT 0,
+            shimmer_tickets INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT NOT NULL
+        )",
+        [],
+    );
+    // 初始化默认余额记录
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO glow_balances (id, glow_amount, micro_tickets, shimmer_tickets, updated_at)
+         VALUES ('user', 0, 0, 0, datetime('now'))",
+        [],
+    );
+
+    // 增量迁移：番茄钟会话表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS pomodoro_sessions (
+            id              TEXT PRIMARY KEY,
+            task_id         TEXT,
+            session_type    TEXT NOT NULL DEFAULT 'focus',
+            target_minutes  INTEGER NOT NULL,
+            actual_seconds  INTEGER NOT NULL DEFAULT 0,
+            status          TEXT NOT NULL DEFAULT 'running',
+            started_at      TEXT NOT NULL,
+            completed_at    TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            deleted_at      TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_task ON pomodoro_sessions(task_id)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_status ON pomodoro_sessions(status)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_sync ON pomodoro_sessions(updated_at)",
+        [],
+    );
+
     // 增量迁移：AI 小本本记忆表
     let _ = conn.execute(
         "CREATE TABLE IF NOT EXISTS ai_memories (
@@ -448,6 +557,268 @@ pub fn run_migrations(conn: &Connection) -> Result<(), String> {
         [],
     );
 
+    // 修复：将 habit_records UNIQUE 索引改为条件索引，排除已软删除的记录
+    // 否则取消打卡（软删除）后同一天无法重新打卡
+    let _ = conn.execute(
+        "DROP INDEX IF EXISTS idx_habit_records_unique",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_records_unique ON habit_records(habit_id, checked_at) WHERE deleted_at IS NULL",
+        [],
+    );
+
+    // 增量迁移：技能 ID 英文重命名
+    // knowledge→focus, physique→vitality, talent→creativity, worldliness→insight, charm→empathy, cultivation→expression
+    // 先更新子表（避免外键冲突），再更新主表
+    let skill_id_map: &[(&str, &str)] = &[
+        ("knowledge", "focus"),
+        ("physique", "vitality"),
+        ("talent", "creativity"),
+        ("worldliness", "insight"),
+        ("charm", "empathy"),
+        ("cultivation", "expression"),
+    ];
+    for &(old_id, new_id) in skill_id_map {
+        let _ = conn.execute("UPDATE task_skills SET skill_id = ?1 WHERE skill_id = ?2", rusqlite::params![new_id, old_id]);
+        let _ = conn.execute("UPDATE skill_events SET skill_id = ?1 WHERE skill_id = ?2", rusqlite::params![new_id, old_id]);
+        let _ = conn.execute("UPDATE skills SET id = ?1 WHERE id = ?2", rusqlite::params![new_id, old_id]);
+        // habits 表也可能引用旧 skill_id
+        let _ = conn.execute("UPDATE habits SET skill_id = ?1 WHERE skill_id = ?2", rusqlite::params![new_id, old_id]);
+    }
+
+    // === 清理旧 CRDT 触发器和表（如果存在） ===
+    cleanup_old_change_tracking(conn);
+
+    // === 增量迁移：添加 deleted_at 列（软删除）===
+    let sync_tables = [
+        "tasks", "skills", "task_skills", "skill_events", "journals",
+        "schedules", "contacts", "diary_contacts", "task_contacts",
+        "settings", "ai_conversations", "ai_messages", "calendars",
+        "contact_methods", "ai_favorites", "ai_memories", "habits", "habit_records",
+        "pomodoro_sessions", "wishes", "wish_draws", "glow_balances", "glow_ledger",
+    ];
+    for table in &sync_tables {
+        let _ = conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN deleted_at TEXT", table),
+            [],
+        );
+    }
+
+    // === 增量迁移：给缺 updated_at 的表添加列 ===
+    let now = "datetime('now')";
+    for table in &["task_skills", "skill_events", "diary_contacts", "task_contacts",
+                     "ai_messages", "contact_methods", "ai_favorites", "habit_records",
+                     "glow_ledger"] {
+        let _ = conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''", table),
+            [],
+        );
+        // 回填已有数据的 updated_at = created_at（如果有的话），否则用当前时间
+        let _ = conn.execute(
+            &format!("UPDATE {table} SET updated_at = COALESCE(created_at, {now}) WHERE updated_at = ''"),
+            [],
+        );
+    }
+
+    // === 增量迁移：给缺 created_at 的表添加列 ===
+    for table in &["task_skills"] {
+        let _ = conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN created_at TEXT NOT NULL DEFAULT ''", table),
+            [],
+        );
+    }
+
+    // 为 deleted_at 和 updated_at 创建索引
+    for table in &sync_tables {
+        let _ = conn.execute(
+            &format!("CREATE INDEX IF NOT EXISTS idx_{table}_sync ON {table}(updated_at)"),
+            [],
+        );
+    }
+
+    // === 增量迁移：CRDT 变更追踪表 ===
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sync_changes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name      TEXT NOT NULL,      -- 表名
+            row_pk          TEXT NOT NULL,      -- 主键值（JSON）
+            column_name     TEXT,               -- 列名，NULL 表示整行操作
+            value           TEXT,               -- 值（JSON），NULL 表示删除
+            col_version     INTEGER DEFAULT 1,  -- 列版本号
+            db_version      INTEGER NOT NULL,   -- 数据库版本号（单调递增）
+            site_id         TEXT NOT NULL,      -- 站点ID
+            seq             INTEGER,            -- 同事务内序列
+            is_delete       INTEGER DEFAULT 0,  -- 是否是删除操作
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )
+    .map_err(|e| format!("Migration sync_changes failed: {}", e))?;
+
+    // 变更追踪表索引
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_changes_version ON sync_changes(db_version, seq)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_changes_site ON sync_changes(site_id, db_version)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_changes_row ON sync_changes(table_name, row_pk, column_name)",
+        [],
+    );
+
+    // === 增量迁移：数据库版本计数器表 ===
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sync_db_version (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            version         INTEGER DEFAULT 0,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )
+    .map_err(|e| format!("Migration sync_db_version failed: {}", e))?;
+
+    // 初始化版本计数器
+    let _ = conn.execute("INSERT OR IGNORE INTO sync_db_version (id, version) VALUES (1, 0)", []);
+
+    // === 增量迁移：Counter CRDT 支持表 ===
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sync_counters (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_name      TEXT NOT NULL,      -- 表名
+            row_pk          TEXT NOT NULL,      -- 主键
+            column_name     TEXT NOT NULL,      -- 列名
+            site_id         TEXT NOT NULL,      -- 站点ID
+            delta           INTEGER NOT NULL,   -- 增量值
+            db_version      INTEGER NOT NULL,   -- 版本号
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )
+    .map_err(|e| format!("Migration sync_counters failed: {}", e))?;
+
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_counters_lookup ON sync_counters(table_name, row_pk, column_name, site_id)",
+        [],
+    );
+
+    // 增量迁移：tasks 表加 glow_reward（完成任务时奖励的萤火数，0 则自动计算）
+    let _ = conn.execute(
+        "ALTER TABLE tasks ADD COLUMN glow_reward INTEGER DEFAULT 0",
+        [],
+    );
+
+    // 增量迁移：萤火账本表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS glow_ledger (
+            id              TEXT PRIMARY KEY,
+            asset_type      TEXT NOT NULL,
+            change_amount   INTEGER NOT NULL,
+            balance_after   INTEGER NOT NULL,
+            reason          TEXT NOT NULL,
+            source_desc     TEXT NOT NULL DEFAULT '',
+            related_id      TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_glow_ledger_type ON glow_ledger(asset_type)",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_glow_ledger_created ON glow_ledger(created_at)",
+        [],
+    );
+
+    // 增量迁移：ai_messages 加 images 列（支持图片消息）
+    let _ = conn.execute(
+        "ALTER TABLE ai_messages ADD COLUMN images TEXT",
+        [],
+    );
+
+    // 增量迁移：日记图片表
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS journal_images (
+            id          TEXT PRIMARY KEY,
+            journal_id  TEXT NOT NULL,
+            file_path   TEXT NOT NULL,
+            file_name   TEXT NOT NULL,
+            mime_type   TEXT,
+            file_size   INTEGER,
+            sort_order  INTEGER DEFAULT 0,
+            created_at  TEXT NOT NULL,
+            FOREIGN KEY (journal_id) REFERENCES journals(id) ON DELETE CASCADE
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_journal_images_journal ON journal_images(journal_id)",
+        [],
+    );
+
+    // 清理回退：将 keychain 占位符恢复为空字符串（OS 密钥链方案已回退）
+    for key in &["sync.password", "ai.api_key", "sync.oss.access_key_secret"] {
+        let _ = conn.execute(
+            "UPDATE settings SET value = '' WHERE key = ?1 AND value = '[keychain]'",
+            rusqlite::params![key],
+        );
+    }
+
+    // === 增量迁移：心愿仓库 — wish_draws 增加 redeemed_at ===
+    // ALTER TABLE ADD COLUMN 在列已存在时会静默失败，所以安全
+    let _ = conn.execute(
+        "ALTER TABLE wish_draws ADD COLUMN redeemed_at TEXT",
+        [],
+    );
+    // 一次性修复：旧迁移 bug 误将所有 draw 标记为已核销
+    // 用 settings 表做标记，只执行一次
+    let fix_done: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM settings WHERE key = '_migration_fix_redeemed_at'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if !fix_done {
+        log::warn!("[migration] 修复 wish_draws 误标记的 redeemed_at");
+        let _ = conn.execute(
+            "UPDATE wish_draws SET redeemed_at = NULL WHERE redeemed_at IS NOT NULL",
+            [],
+        );
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('_migration_fix_redeemed_at', '1', datetime('now'))",
+            [],
+        );
+    }
+
     log::info!("Database migrations completed");
     Ok(())
+}
+
+/// 清理旧的 CRDT 触发器和表
+fn cleanup_old_change_tracking(conn: &Connection) {
+    // 删除所有 _crsql_* 触发器
+    let tables = [
+        "tasks", "skills", "task_skills", "skill_events", "journals",
+        "schedules", "contacts", "diary_contacts", "task_contacts",
+        "settings", "ai_conversations", "ai_messages", "calendars",
+        "contact_methods", "ai_favorites", "ai_memories", "habits", "habit_records",
+        "pomodoro_sessions",
+    ];
+    for table in &tables {
+        let _ = conn.execute_batch(&format!(
+            "DROP TRIGGER IF EXISTS _crsql_{table}_insert;
+             DROP TRIGGER IF EXISTS _crsql_{table}_update;
+             DROP TRIGGER IF EXISTS _crsql_{table}_delete;"
+        ));
+    }
+    // 删除旧表
+    let _ = conn.execute("DROP TABLE IF EXISTS crsql_changes", []);
+    let _ = conn.execute("DROP TABLE IF EXISTS crsql_db_version", []);
+    // 清理旧的同步配置
+    let _ = conn.execute("DELETE FROM settings WHERE key IN ('sync.export_version', 'sync.last_known_versions')", []);
 }

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Check, X, Trash2, Loader2, CircleCheck, Search, Send, Pencil, Zap } from 'lucide-react';
+import { Check, X, Trash2, Loader2, CircleCheck, Search, Send, Pencil, Zap, Sparkles } from 'lucide-react';
 import type { ToolCallDef } from '@/types/ai';
 import { parseGenericArgs } from '@/utils/aiParsers';
 import { TOOL_LABELS } from '@/utils/aiLabels';
 import { SKILL_COLORS } from '@/styles/theme';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 
 /** skill_id → 中文名 */
 const SKILL_NAME_MAP: Record<string, string> = {};
@@ -45,6 +45,8 @@ export function ToolCallCard(props: ToolCallCardProps) {
       return <UpdateCard {...props} info={info} />;
     case '查询':
       return <QueryCard {...props} info={info} />;
+    case '奖励':
+      return <RewardCard {...props} info={info} />;
     default:
       return <GenericCard {...props} info={info} />;
   }
@@ -62,7 +64,7 @@ function CreateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
   const detailLines = buildDetailLines(toolCall.function.name, params);
 
   return (
-    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${info?.color || '#58A968'}30` }}>
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(info?.color || '#58A968', 0.19)}` }}>
       <CardHeader icon={<Check size={12} />} color={info?.color || '#58A968'} title={info?.label || '创建'} />
       <div className="px-4 py-3 space-y-2">
         {title ? <div><span className="text-sm font-medium" style={{ color: appTheme.ink }}>{title}</span></div> : null}
@@ -93,7 +95,7 @@ function ExecuteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, inf
   const detailLines = buildDetailLines(toolCall.function.name, params);
 
   return (
-    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${info?.color || '#7CB342'}30` }}>
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(info?.color || '#7CB342', 0.19)}` }}>
       <CardHeader icon={<CircleCheck size={12} />} color={info?.color || '#7CB342'} title={info?.label || '执行'} />
       <div className="px-4 py-3 space-y-2">
         {query ? (
@@ -128,8 +130,8 @@ function DeleteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
   const query = (params.query as string) || '';
 
   return (
-    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${info?.color || '#E65C5C'}30` }}>
-      <CardHeader icon={<Trash2 size={12} />} color={info?.color || '#E65C5C'} title={info?.label || '删除'} />
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(info?.color || appTheme.danger, 0.19)}` }}>
+      <CardHeader icon={<Trash2 size={12} />} color={info?.color || appTheme.danger} title={info?.label || '删除'} />
       <div className="px-4 py-3 space-y-2">
         {query ? (
           <div className="flex items-center gap-2">
@@ -137,7 +139,7 @@ function DeleteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
             <span className="text-sm font-medium" style={{ color: appTheme.ink }}>"{query}"</span>
           </div>
         ) : null}
-        <p className="text-xs" style={{ color: '#E65C5C' }}>此操作不可撤销，请确认</p>
+        <p className="text-xs" style={{ color: appTheme.danger }}>此操作不可撤销，请确认</p>
       </div>
       {modifyMode ? (
         <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
@@ -145,7 +147,7 @@ function DeleteCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
         <CardActions
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="确认删除" confirmColor={info?.color || '#E65C5C'}
+          confirmLabel="确认删除" confirmColor={info?.color || appTheme.danger}
         />
       )}
     </div>
@@ -162,8 +164,8 @@ function UpdateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
   const detailLines = buildDetailLines(toolCall.function.name, params);
 
   return (
-    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${info?.color || '#E8B959'}30` }}>
-      <CardHeader icon={<Pencil size={12} />} color={info?.color || '#E8B959'} title={info?.label || '修改'} />
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(info?.color || SKILL_COLORS.creativity.hex, 0.19)}` }}>
+      <CardHeader icon={<Pencil size={12} />} color={info?.color || SKILL_COLORS.creativity.hex} title={info?.label || '修改'} />
       <div className="px-4 py-3 space-y-2">
         {query ? (
           <div className="flex items-center gap-2">
@@ -181,7 +183,7 @@ function UpdateCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info
         <CardActions
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
-          confirmLabel="确认修改" confirmColor={info?.color || '#E8B959'}
+          confirmLabel="确认修改" confirmColor={info?.color || SKILL_COLORS.creativity.hex}
         />
       )}
     </div>
@@ -198,7 +200,7 @@ function QueryCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info 
   const detailLines = buildDetailLines(toolCall.function.name, params);
 
   return (
-    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${info?.color || '#6B9BD2'}30` }}>
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(info?.color || '#6B9BD2', 0.19)}` }}>
       <CardHeader icon={<Search size={12} />} color={info?.color || '#6B9BD2'} title={info?.label || '查询'} />
       <div className="px-4 py-3 space-y-2">
         {query ? (
@@ -217,6 +219,49 @@ function QueryCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info 
           isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
           onModifyClick={onModify ? () => setModifyMode(true) : undefined}
           confirmLabel="执行" confirmColor={info?.color || '#6B9BD2'}
+        />
+      )}
+    </div>
+  );
+}
+
+// ========== 分组卡片：萤火奖励 ==========
+
+function RewardCard({ toolCall, isExecuting, onConfirm, onCancel, onModify, info }: ToolCallCardProps) {
+  const appTheme = useAppTheme();
+  const params = parseGenericArgs(toolCall);
+  const [modifyMode, setModifyMode] = useState(false);
+
+  const amount = (params.amount as number) || 0;
+  const reason = (params.reason as string) || '';
+  const category = (params.category as string) || '';
+
+  const goldColor = info?.color || '#D4A843';
+
+  return (
+    <div className="mt-2 rounded-xl border overflow-hidden" style={{ backgroundColor: appTheme.canvas, borderColor: `${withAlpha(goldColor, 0.25)}` }}>
+      <CardHeader icon={<Sparkles size={12} />} color={goldColor} title={info?.label || '萤火奖励'} />
+      <div className="px-4 py-3 space-y-2.5">
+        {category ? (
+          <div className="inline-block px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: withAlpha(goldColor, 0.12), color: goldColor }}>
+            {category}
+          </div>
+        ) : null}
+        {reason ? (
+          <p className="text-sm leading-relaxed" style={{ color: appTheme.ink }}>{reason}</p>
+        ) : null}
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-2xl font-bold" style={{ color: goldColor, fontFamily: 'var(--font-display, system-ui)' }}>+{amount}</span>
+          <span className="text-xs" style={{ color: appTheme.inkMuted48 }}>萤火</span>
+        </div>
+      </div>
+      {modifyMode ? (
+        <CardModifyInput onSubmit={(text) => { onModify?.(text); setModifyMode(false); }} onBack={() => setModifyMode(false)} />
+      ) : (
+        <CardActions
+          isExecuting={isExecuting} onConfirm={onConfirm} onCancel={onCancel}
+          onModifyClick={onModify ? () => setModifyMode(true) : undefined}
+          confirmLabel="确认奖励" confirmColor={goldColor}
         />
       )}
     </div>
@@ -250,8 +295,8 @@ function GenericCard({ toolCall, isExecuting, onConfirm, onCancel, info }: ToolC
 
 function CardHeader({ icon, color, title }: { icon: React.ReactNode; color: string; title: string }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5" style={{ backgroundColor: `${color}12`, borderBottom: `1px solid ${color}20` }}>
-      <div className="w-5 h-5 flex items-center justify-center rounded" style={{ backgroundColor: `${color}18` }}>
+    <div className="flex items-center gap-2 px-4 py-2.5" style={{ backgroundColor: `${withAlpha(color, 0.07)}`, borderBottom: `1px solid ${withAlpha(color, 0.13)}` }}>
+      <div className="w-5 h-5 flex items-center justify-center rounded" style={{ backgroundColor: `${withAlpha(color, 0.09)}` }}>
         <span style={{ color }}>{icon}</span>
       </div>
       <span className="text-sm font-medium" style={{ color }}>{title}</span>
@@ -277,7 +322,7 @@ function CardActions({
         disabled={isExecuting}
         className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors disabled:opacity-50"
         style={{ color: confirmColor }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${confirmColor}0D`)}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${withAlpha(confirmColor, 0.05)}`)}
         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       >
         {isExecuting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
@@ -291,7 +336,7 @@ function CardActions({
             disabled={isExecuting}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors disabled:opacity-50"
             style={{ color: '#C08B30' }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#C08B30' + '0D')}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = withAlpha('#C08B30', 0.05))}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             <Pencil size={14} />
@@ -305,7 +350,7 @@ function CardActions({
         disabled={isExecuting}
         className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm transition-colors disabled:opacity-50"
         style={{ color: appTheme.inkMuted48 }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${appTheme.ink}0D`)}
+        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${withAlpha(appTheme.ink, 0.05)}`)}
         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
       >
         <X size={14} />
@@ -336,16 +381,16 @@ function CardModifyInput({ onSubmit, onBack }: { onSubmit: (text: string) => voi
         placeholder="补充你的意见，让 AI 重新生成..."
         autoFocus
         className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none transition-colors"
-        style={{ backgroundColor: `${appTheme.ink}08`, color: appTheme.ink }}
+        style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.03)}`, color: appTheme.ink }}
       />
       <div className="flex items-center gap-2">
         <button
           onClick={handleSubmit}
           disabled={!text.trim()}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ backgroundColor: '#C08B30' + '18', color: '#C08B30' }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#C08B30' + '28')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#C08B30' + '18')}
+          style={{ backgroundColor: withAlpha('#C08B30', 0.09), color: '#C08B30' }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = withAlpha('#C08B30', 0.16))}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = withAlpha('#C08B30', 0.09))}
         >
           <Send size={12} />
           发送
@@ -455,4 +500,11 @@ const FIELD_LABELS: Record<string, string> = {
   icon: '图标',
   color: '颜色',
   habit_id: '习惯ID',
+  note: '备注',
+  memory_type: '记忆类型',
+  source_text: '来源文本',
+  expression: '表达式',
+  module: '模块',
+  limit: '数量上限',
+  id: 'ID',
 };

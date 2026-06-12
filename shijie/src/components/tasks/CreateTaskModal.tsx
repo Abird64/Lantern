@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { SKILL_COLORS, SKILL_ORDER } from '@/styles/theme';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 
 interface CreateTaskModalProps {
   show: boolean;
@@ -16,6 +16,7 @@ export interface CreateTaskData {
   scheduled_at?: string;
   deadline?: string;
   estimated_minutes?: number;
+  glow_reward?: number;
   tags?: string;
   skillXps: Record<string, number>;
 }
@@ -25,6 +26,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('');
   const [estimatedMinutes, setEstimatedMinutes] = useState('');
+  const [glowReward, setGlowReward] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -49,6 +51,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
     setScheduledAt('');
     setDeadline('');
     setEstimatedMinutes('');
+    setGlowReward('');
     setTags([]);
     setTagInput('');
     setSkillXps({});
@@ -67,6 +70,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
         scheduled_at: scheduledAt || undefined,
         deadline: deadline || undefined,
         estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
+        glow_reward: glowReward ? parseInt(glowReward) : undefined,
         tags: tags.length > 0 ? JSON.stringify(tags) : undefined,
         skillXps,
       });
@@ -79,22 +83,22 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
 
   // 动态颜色
   const txt = appTheme.ink;
-  const txtHint = txt + '33';
-  const txtLight = txt + '4D';
-  const txtMid = txt + '80';
-  const txtBody = txt + 'B3';
-  const bgSubtle = txt + '0D';
-  const bgHover = txt + '1A';
-  const bgDisabled = txt + '1A';
-  const borderSubtle = txt + '1A';
+  const txtHint = withAlpha(txt, 0.35);
+  const txtLight = withAlpha(txt, 0.3);
+  const txtMid = withAlpha(txt, 0.5);
+  const txtBody = withAlpha(txt, 0.7);
+  const bgSubtle = withAlpha(txt, 0.05);
+  const bgHover = withAlpha(txt, 0.1);
+  const bgDisabled = withAlpha(txt, 0.1);
+  const borderSubtle = withAlpha(txt, 0.1);
 
   return (
     <>
       <style>{`
         #create-task-modal .focus-accent:focus { border-color: ${appTheme.primary}; outline: none; }
-        #create-task-modal .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${appTheme.primary}4D; }
+        #create-task-modal .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${withAlpha(appTheme.primary, 0.3)}; }
         #create-task-modal .btn-create { background-color: ${appTheme.primary}; }
-        #create-task-modal .btn-create:hover { background-color: ${appTheme.primary}DD; }
+        #create-task-modal .btn-create:hover { background-color: ${withAlpha(appTheme.primary, 0.87)}; }
         #create-task-modal .input-focus-accent:focus { border-color: ${appTheme.primary}; outline: none; }
         #create-task-modal input::placeholder,
         #create-task-modal textarea::placeholder { color: ${txtHint}; }
@@ -138,8 +142,8 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
           </div>
           <div className="flex gap-2 ml-auto">
             {[
-              { value: 'high', label: '紧急', color: '#E74C3C' },
-              { value: 'medium', label: '重要', color: '#F39C12' },
+              { value: 'high', label: '紧急', color: appTheme.danger },
+              { value: 'medium', label: '重要', color: appTheme.warning },
               { value: 'low', label: '一般', color: appTheme.primary },
             ].map((p) => (
               <button
@@ -147,7 +151,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
                 onClick={() => setPriority(priority === p.value ? '' : p.value)}
                 className="px-4 py-2 rounded-full text-sm transition-all"
                 style={priority === p.value
-                  ? { backgroundColor: p.color, color: '#fff' }
+                  ? { backgroundColor: p.color, color: appTheme.onPrimary }
                   : { color: txtMid, backgroundColor: bgSubtle }}
               >
                 {p.label}
@@ -193,7 +197,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
                   className="time-input text-sm w-20" style={{ color: txt }}
                 />
               </div>
-              <div className="flex items-center gap-1.5 rounded-xl px-3 py-2.5 ml-auto" style={{ backgroundColor: bgSubtle }}>
+              <div className="flex items-center gap-1.5 rounded-xl px-3 py-2.5" style={{ backgroundColor: bgSubtle }}>
                 <span className="text-sm" style={{ color: txtLight }}>预计</span>
                 <input
                   type="number"
@@ -205,6 +209,18 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
                   style={{ color: txt }}
                 />
                 <span className="text-sm" style={{ color: txtLight }}>分钟</span>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-xl px-3 py-2.5 ml-auto" style={{ backgroundColor: bgSubtle }}>
+                <span className="text-sm" style={{ color: txtLight }}>萤火</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={glowReward}
+                  onChange={(e) => setGlowReward(e.target.value)}
+                  placeholder="自动"
+                  className="w-12 text-sm bg-transparent text-center focus:outline-none"
+                  style={{ color: txt }}
+                />
               </div>
             </div>
 
@@ -296,7 +312,7 @@ export function CreateTaskModal({ show, onClose, onCreate }: CreateTaskModalProp
             disabled={!title.trim() || sending}
             className="flex-1 py-3 rounded-2xl text-base font-medium transition-all"
             style={title.trim() && !sending
-              ? { backgroundColor: appTheme.primary, color: '#fff' }
+              ? { backgroundColor: appTheme.primary, color: appTheme.onPrimary }
               : { backgroundColor: bgDisabled, color: txtLight }}
           >
             创建

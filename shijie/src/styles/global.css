@@ -3,6 +3,7 @@
 /* ========== 全局基础样式 ========== */
 html, body, #root {
   height: 100%;
+  height: 100dvh;
   width: 100%;
   font-family: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -42,32 +43,32 @@ input, textarea, [contenteditable="true"] {
 }
 
 *:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
-/* 毛玻璃效果 */
+/* 毛玻璃效果 — 夜萤风格 */
 .glass {
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(1.2) blur(20px);
+  -webkit-backdrop-filter: saturate(1.2) blur(20px);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .glass-dark {
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: saturate(1.2) blur(20px);
+  -webkit-backdrop-filter: saturate(1.2) blur(20px);
+  background: rgba(0, 0, 0, 0.5);
 }
 
-/* Markdown 渲染样式 — 浅色背景版 */
+/* Markdown 渲染样式 — 颜色继承父元素（由 inline style 控制深浅色） */
 .markdown-body p {
   margin: 0 0 0.5em 0;
   line-height: 1.47;
-  font-size: 17px;
-  color: #1d1d1f;
+  font-size: 14px;
 }
 .markdown-body p:last-child {
   margin-bottom: 0;
@@ -79,13 +80,13 @@ input, textarea, [contenteditable="true"] {
   font-style: italic;
 }
 .markdown-body code {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--md-code-bg, rgba(255, 255, 255, 0.08));
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
 }
 .markdown-body pre {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--md-code-bg, rgba(255, 255, 255, 0.06));
   padding: 0.75em 1em;
   border-radius: 8px;
   overflow-x: auto;
@@ -103,26 +104,25 @@ input, textarea, [contenteditable="true"] {
   margin: 0.2em 0;
 }
 .markdown-body blockquote {
-  border-left: 3px solid rgba(0, 0, 0, 0.12);
+  border-left: 3px solid var(--md-border, rgba(255, 255, 255, 0.15));
   padding-left: 0.75em;
   margin: 0.5em 0;
-  color: #7a7a7a;
+  opacity: 0.6;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
   margin: 0.6em 0 0.3em 0;
   font-weight: 600;
-  color: #1d1d1f;
 }
 .markdown-body h1 { font-size: 1.2em; }
 .markdown-body h2 { font-size: 1.1em; }
 .markdown-body h3 { font-size: 1em; }
 .markdown-body hr {
   border: none;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--md-border, rgba(255,255,255,0.06));
   margin: 0.75em 0;
 }
 .markdown-body a {
-  color: #0066cc;
+  color: var(--md-link, #4CAF76);
   text-decoration: none;
 }
 .markdown-body a:hover {
@@ -137,58 +137,233 @@ input, textarea, [contenteditable="true"] {
   transform: scale(0.95);
 }
 
-/* ========== 底部安全区 ========== */
+@media (prefers-reduced-motion: reduce) {
+  .btn-press {
+    transition: none;
+  }
+  .btn-press:active {
+    transform: none;
+  }
+}
+
+/* ========== 安全区域 ========== */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-
-/* ========== 深色模式 ========== */
-body.dark {
-  background-color: #1c1c1e;
-  color: #f5f5f7;
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* 键盘弹出时隐藏底部 TabBar，释放空间给输入区 */
+body.keyboard-open nav.safe-bottom {
+  display: none;
+}
+
+/* App 根容器：100dvh 跟随键盘动态调整，100vh 作为旧浏览器 fallback */
+.app-root {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* ========== 移动端覆盖 ========== */
+@media (max-width: 767px) {
+  /* 根字体根据屏幕宽度缩放，让所有 rem 单位自适应 */
+  /* 375px 宽 → 16px，430px 宽 → ~15px，320px 宽 → ~13.6px */
+  html {
+    font-size: clamp(13px, 3.7vw, 16px);
+  }
+
+  /* 移动端允许文本选择 */
+  *, *::before, *::after {
+    user-select: auto;
+    -webkit-user-select: auto;
+  }
+  input, textarea, [contenteditable="true"], .chat-bubble, .chat-bubble * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* 移动端隐藏滚动条 */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ========== 夜萤深色（默认） ========== */
 body {
+  background-color: #0F1412;
+  color: rgba(255,255,255,0.88);
   transition: background-color 0.3s ease, color 0.3s ease;
+  --md-code-bg: rgba(255, 255, 255, 0.08);
+  --md-border: rgba(255, 255, 255, 0.12);
+  --md-link: #4CAF76;
 }
 
 /* 深色滚动条 */
-body.dark *:hover::-webkit-scrollbar-thumb {
+*:hover::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
 }
-body.dark ::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* 深色 Markdown */
-body.dark .markdown-body p { color: #f5f5f7; }
-body.dark .markdown-body code {
-  background: rgba(255, 255, 255, 0.1);
-}
-body.dark .markdown-body pre {
-  background: rgba(255, 255, 255, 0.06);
-}
-body.dark .markdown-body blockquote {
-  border-left-color: rgba(255, 255, 255, 0.15);
-  color: #8e8e93;
-}
-body.dark .markdown-body h1,
-body.dark .markdown-body h2,
-body.dark .markdown-body h3 { color: #f5f5f7; }
-body.dark .markdown-body hr {
-  border-top-color: #38383a;
-}
-body.dark .markdown-body a {
-  color: #2997ff;
+/* 选中色 */
+::selection {
+  background: rgba(76, 175, 118, 0.3);
+  color: rgba(255,255,255,0.88);
 }
 
-/* 深色毛玻璃 */
-body.dark .glass {
-  background: rgba(0, 0, 0, 0.72);
+/* ========== 浅色模式覆盖 ========== */
+html.light body,
+body.light {
+  background-color: #F4F7F5;
+  color: #1A2E23;
+  --md-code-bg: rgba(0, 0, 0, 0.06);
+  --md-border: rgba(0, 0, 0, 0.12);
+  --md-link: #2d6b4f;
+}
+body.light *:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+}
+body.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+body.light ::selection {
+  background: rgba(45, 107, 79, 0.2);
+  color: #1A2E23;
+}
+body.light .glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-/* 深色选中 */
-body.dark ::selection {
-  background: rgba(41, 151, 255, 0.3);
-  color: #f5f5f7;
+/* ========== 共享动画与组件样式 ========== */
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slide-in 0.25s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}
+
+.date-input, .time-input {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.date-input::-webkit-calendar-picker-indicator,
+.time-input::-webkit-calendar-picker-indicator {
+  opacity: 0.4;
+  cursor: pointer;
+  filter: grayscale(1);
+}
+.date-input::-webkit-calendar-picker-indicator:hover,
+.time-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.7;
+}
+
+.schedule-scroll::-webkit-scrollbar { display: none; }
+.schedule-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+
+select.custom-select { cursor: pointer; }
+select.custom-select option {
+  color: var(--select-color, inherit);
+  background: var(--select-bg, inherit);
+}
+
+.date-input::-webkit-datetime-edit,
+.time-input::-webkit-datetime-edit { color: inherit; }
+.date-input::-webkit-datetime-edit-fields-wrapper,
+.time-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+.date-input::-webkit-datetime-edit-text,
+.time-input::-webkit-datetime-edit-text { color: var(--ink-25, rgba(255,255,255,0.25)); padding: 0 1px; }
+.date-input::-webkit-datetime-edit-month-field,
+.date-input::-webkit-datetime-edit-day-field,
+.date-input::-webkit-datetime-edit-year-field,
+.time-input::-webkit-datetime-edit-hour-field,
+.time-input::-webkit-datetime-edit-minute-field { color: inherit; }
+
+.task-search-input:focus { box-shadow: 0 0 0 2px var(--primary-30, rgba(76,175,118,0.3)); }
+.task-search-input::placeholder { color: var(--ink-30, rgba(255,255,255,0.3)); }
+.task-fab { background-color: var(--primary, #4CAF76); }
+.task-fab:hover { background-color: var(--primary-87, rgba(76,175,118,0.87)); }
+
+/* ========== 移动端适配：触摸目标与无 hover 设备 ========== */
+
+/* 触摸设备上，消息操作按钮始终可见 */
+@media (hover: none) {
+  .chat-bubble ~ div .message-actions,
+  .group:hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+}
+
+/* 确保最小触摸目标 44x44px */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* 移动端工具栏按钮优化 */
+@media (max-width: 640px) {
+  .toolbar-btn {
+    padding: 8px;
+  }
+  .toolbar-btn span {
+    display: none;
+  }
+}
+
+/* ========== 萤火微光动画 ========== */
+@keyframes fireflyPulse {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 4px 1px rgba(76, 175, 118, 0.2); }
+  50% { opacity: 1; box-shadow: 0 0 12px 3px rgba(76, 175, 118, 0.4); }
+}
+
+@keyframes fireflyBreath {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(76, 175, 118, 0.15); }
+  50% { box-shadow: 0 0 14px 5px rgba(76, 175, 118, 0.35); }
+}
+
+.firefly-glow {
+  animation: fireflyPulse 3s ease-in-out infinite;
+}
+
+.firefly-breath {
+  animation: fireflyBreath 4s ease-in-out infinite;
+}
+
+/* 移动端禁用 box-shadow 动画（Android WebView 触发 paint 循环导致发热卡顿） */
+@media (hover: none) and (pointer: coarse) {
+  .firefly-glow,
+  .firefly-breath {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .firefly-glow,
+  .firefly-breath {
+    animation: none;
+  }
 }

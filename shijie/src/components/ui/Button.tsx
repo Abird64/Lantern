@@ -2,7 +2,7 @@ import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { useAppTheme } from '@/stores/themeStore';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'xp-knowledge' | 'xp-talent';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'xp-focus' | 'xp-creativity';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -31,13 +31,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       },
       danger: {
         backgroundColor: appTheme.danger,
-        color: '#ffffff',
+        color: appTheme.onPrimary,
       },
-      'xp-knowledge': {
+      'xp-focus': {
         backgroundColor: 'rgba(42, 140, 183, 0.14)',
         color: '#2A8CB7',
       },
-      'xp-talent': {
+      'xp-creativity': {
         backgroundColor: 'rgba(230, 184, 92, 0.14)',
         color: '#E6B85C',
       },

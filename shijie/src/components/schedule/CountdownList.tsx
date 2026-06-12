@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { useScheduleStore } from '@/stores/scheduleStore';
 import * as scheduleService from '@/services/scheduleService';
+import { getContrastColor } from './EventBlock';
 import { Plus, X, Trash2 } from 'lucide-react';
 import type { Schedule, CreateScheduleInput } from '@/types/schedule';
 
@@ -72,7 +73,7 @@ function CountdownForm({
           <h3 className="text-lg font-medium" style={{ color: appTheme.ink }}>
             {editing ? '编辑倒数日' : '新建倒数日'}
           </h3>
-          <button onClick={onCancel} className="p-1 rounded-full" style={{ color: `${appTheme.ink}88` }}>
+          <button onClick={onCancel} className="p-1 rounded-full" style={{ color: `${withAlpha(appTheme.ink, 0.53)}` }}>
             <X size={20} />
           </button>
         </div>
@@ -84,9 +85,9 @@ function CountdownForm({
           onChange={(e) => setTitle(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
           style={{
-            backgroundColor: `${appTheme.primary}15`,
+            backgroundColor: `${withAlpha(appTheme.primary, 0.08)}`,
             color: appTheme.ink,
-            border: `1px solid ${appTheme.primary}33`,
+            border: `1px solid ${withAlpha(appTheme.primary, 0.2)}`,
           }}
           autoFocus
         />
@@ -97,9 +98,9 @@ function CountdownForm({
           onChange={(e) => setDate(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
           style={{
-            backgroundColor: `${appTheme.primary}15`,
+            backgroundColor: `${withAlpha(appTheme.primary, 0.08)}`,
             color: appTheme.ink,
-            border: `1px solid ${appTheme.primary}33`,
+            border: `1px solid ${withAlpha(appTheme.primary, 0.2)}`,
           }}
         />
 
@@ -123,7 +124,7 @@ function CountdownForm({
             <button
               onClick={onDelete}
               className="px-4 py-2 rounded-xl text-sm flex items-center gap-1"
-              style={{ color: '#C75C5C' }}
+              style={{ color: appTheme.danger }}
             >
               <Trash2 size={16} /> 删除
             </button>
@@ -132,7 +133,7 @@ function CountdownForm({
           <button
             onClick={handleSubmit}
             className="px-6 py-2 rounded-xl text-sm font-medium"
-            style={{ backgroundColor: color, color: '#fff' }}
+            style={{ backgroundColor: color, color: getContrastColor(color) }}
           >
             {editing ? '保存' : '创建'}
           </button>
@@ -184,10 +185,11 @@ export function CountdownList() {
   if (sorted.length === 0 && !showForm) {
     return (
       <div className="w-full rounded-2xl p-12 text-center space-y-4" style={{ backgroundColor: appTheme.canvas }}>
-        <p className="text-lg" style={{ color: `${appTheme.ink}66` }}>还没有倒数日</p>
+        <p className="text-base" style={{ color: `${withAlpha(appTheme.ink, 0.35)}` }}>还没有倒数日</p>
+        <p className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.2)}` }}>标记一个值得等待的日子，让每一天都有盼头</p>
         <button
           onClick={() => { setEditing(null); setShowForm(true); }}
-          className="px-5 py-2.5 rounded-full text-sm font-medium inline-flex items-center gap-2"
+          className="mt-3 px-5 py-2.5 rounded-full text-sm font-medium inline-flex items-center gap-2"
           style={{ backgroundColor: appTheme.primary, color: appTheme.ink }}
         >
           <Plus size={18} /> 创建第一个倒数日
@@ -211,16 +213,18 @@ export function CountdownList() {
               className="rounded-2xl p-5 text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
               style={{
                 backgroundColor: appTheme.canvas,
-                borderLeft: `4px solid ${item.color || COLOR_OPTIONS[0]}`,
                 opacity: isExpired ? 0.5 : 1,
               }}
             >
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium" style={{ color: appTheme.ink }}>{item.title}</p>
-                  <p className="text-xs mt-1" style={{ color: `${appTheme.ink}88` }}>
-                    {formatDate(item.start_at)}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: item.color || COLOR_OPTIONS[0] }} />
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: appTheme.ink }}>{item.title}</p>
+                    <p className="text-xs mt-1" style={{ color: `${withAlpha(appTheme.ink, 0.53)}` }}>
+                      {formatDate(item.start_at)}
+                    </p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p
@@ -229,13 +233,13 @@ export function CountdownList() {
                       color: isToday
                         ? '#D4A843'
                         : isExpired
-                          ? `${appTheme.ink}66`
+                          ? `${withAlpha(appTheme.ink, 0.4)}`
                           : item.color || COLOR_OPTIONS[0],
                     }}
                   >
                     {isExpired ? `+${Math.abs(days)}` : isToday ? '今天' : days}
                   </p>
-                  <p className="text-xs" style={{ color: `${appTheme.ink}66` }}>
+                  <p className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.4)}` }}>
                     {isExpired ? '天前' : isToday ? '' : '天'}
                   </p>
                 </div>
@@ -248,9 +252,9 @@ export function CountdownList() {
           onClick={() => { setEditing(null); setShowForm(true); }}
           className="rounded-2xl p-5 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
           style={{
-            backgroundColor: `${appTheme.primary}15`,
-            border: `2px dashed ${appTheme.primary}44`,
-            color: `${appTheme.ink}88`,
+            backgroundColor: `${withAlpha(appTheme.primary, 0.08)}`,
+            border: `2px dashed ${withAlpha(appTheme.primary, 0.27)}`,
+            color: `${withAlpha(appTheme.ink, 0.53)}`,
           }}
         >
           <Plus size={20} /> 新建倒数日

@@ -1,0 +1,55 @@
+<svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="ringClip">
+      <rect x="0" y="0" width="400" height="155" />
+    </clipPath>
+    <radialGradient id="lanternGlow" cx="50%" cy="65%" r="35%">
+      <stop offset="0%" stop-color="#4CAF76" stop-opacity="0.4" />
+      <stop offset="50%" stop-color="#4CAF76" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#4CAF76" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="lanternFill" cx="50%" cy="60%" r="50%">
+      <stop offset="0%" stop-color="#4CAF76" stop-opacity="0.35" />
+      <stop offset="60%" stop-color="#4CAF76" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#4CAF76" stop-opacity="0.08" />
+    </radialGradient>
+    <clipPath id="glassClip">
+      <path d="M145,180 L90,280 L145,430 L255,430 L310,280 L255,180 Z" />
+    </clipPath>
+  </defs>
+
+  <!-- 背景光晕 -->
+  <ellipse cx="200" cy="290" rx="100" ry="120" fill="url(#lanternGlow)" />
+
+  <!-- 灯体填充 -->
+  <g clip-path="url(#glassClip)">
+    <path d="M145,180 L90,280 L145,430 L255,430 L310,280 L255,180 Z" fill="url(#lanternFill)" />
+    <!-- 眼睛 -->
+    <line x1="165" y1="275" x2="165" y2="285" stroke="#A8E6CF" stroke-width="12" stroke-linecap="round" opacity="0.9" />
+    <line x1="235" y1="275" x2="235" y2="285" stroke="#A8E6CF" stroke-width="12" stroke-linecap="round" opacity="0.9" />
+  </g>
+
+  <!-- 顶部提手圆环 -->
+  <g clip-path="url(#ringClip)">
+    <ellipse cx="200" cy="110" rx="75" ry="75" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+    <ellipse cx="200" cy="110" rx="58" ry="58" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2" />
+  </g>
+
+  <!-- 顶部连接方块 -->
+  <rect x="175" y="140" width="50" height="15" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+  <rect x="130" y="155" width="140" height="25" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+
+  <!-- 灯体外框 -->
+  <path d="M130,180 L70,280 L130,430" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+  <path d="M270,180 L330,280 L270,430" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+  <path d="M145,180 L90,280 L145,430" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+  <path d="M255,180 L310,280 L255,430" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+
+  <!-- 玻璃罩边框 -->
+  <line x1="130" y1="180" x2="145" y2="180" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+  <line x1="255" y1="180" x2="270" y2="180" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+
+  <!-- 底部横条 -->
+  <rect x="120" y="430" width="160" height="18" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+  <rect x="100" y="448" width="200" height="22" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+</svg>

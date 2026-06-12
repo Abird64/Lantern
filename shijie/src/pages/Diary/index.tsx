@@ -1,12 +1,12 @@
-import { useEffect, useState, useRef } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { NavBar } from '@/components/ui';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, ImagePlus, X } from 'lucide-react';
+import { NavBar, ImageViewer } from '@/components/ui';
 import { PageContainer } from '@/components/layout';
 import { TimelineDropdown } from '@/components/diary/TimelineDropdown';
 import { ReflectionPanel } from '@/components/diary/ReflectionPanel';
 import { useJournalStore } from '@/stores/journalStore';
 import { SKILL_COLORS } from '@/styles/theme';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import type { CompleteResult } from '@/types/task';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -43,6 +43,8 @@ export function DiaryPage() {
     contacts,
     reflectionMood,
     reflectionTags,
+    images,
+    imageDataCache,
     updateContent,
     loadToday,
     saveNow,
@@ -52,10 +54,15 @@ export function DiaryPage() {
     removeContact,
     confirmAllContacts,
     setShowReflectionPanel,
+    uploadImage,
+    deleteImage,
+    loadImageData,
   } = useJournalStore();
 
   const [xpToast, setXpToast] = useState<CompleteResult | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
 
   useEffect(() => {
     loadToday();
@@ -82,6 +89,17 @@ export function DiaryPage() {
   const handleSaveDraft = async () => {
     await saveNow();
   };
+
+  const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith('image/')) {
+        await uploadImage(file);
+      }
+    }
+    e.target.value = '';
+  }, [uploadImage]);
 
   const handlePrevDay = () => setCurrentDate(shiftDate(currentDate, -1));
   const handleNextDay = () => setCurrentDate(shiftDate(currentDate, 1));
@@ -114,7 +132,7 @@ export function DiaryPage() {
             className="flex flex-col items-center min-w-[120px] cursor-pointer"
           >
             {isLoading ? (
-              <span className="text-sm" style={{ color: `${appTheme.ink}80` }}>加载中...</span>
+              <span className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>加载中...</span>
             ) : (
               <>
                 <span className="text-lg font-semibold" style={{ color: appTheme.ink }}>
@@ -150,9 +168,9 @@ export function DiaryPage() {
             useJournalStore.getState().setShowReflectionPanel(true);
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors text-sm"
-          style={{ color: `${appTheme.ink}66` }}
+          style={{ color: `${withAlpha(appTheme.ink, 0.4)}` }}
           onMouseEnter={(e) => (e.currentTarget.style.color = appTheme.ink)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = `${appTheme.ink}66`)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = `${withAlpha(appTheme.ink, 0.4)}`)}
           title="查看提灯总结"
         >
           <span>✨</span>
@@ -174,7 +192,7 @@ export function DiaryPage() {
       <div className="flex-1 flex flex-col overflow-hidden px-4 sm:px-8">
         <div className="flex-1 overflow-y-auto max-w-[800px] w-full mx-auto">
           <style>{`
-            .diary-textarea::placeholder { color: ${appTheme.ink}4D; }
+            .diary-textarea::placeholder { color: ${withAlpha(appTheme.ink, 0.3)}; }
           `}</style>
           <textarea
             className="diary-textarea w-full h-full bg-transparent resize-none text-base focus:outline-none py-4"
@@ -190,9 +208,93 @@ export function DiaryPage() {
           />
         </div>
         <div className="flex-shrink-0 text-right py-2 max-w-[800px] w-full mx-auto">
-          <span className="text-xs" style={{ color: `${appTheme.ink}4D` }}>{wordCount} 字</span>
+          <span className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.3)}` }}>{wordCount} 字</span>
+        </div>
+
+        {/* 图片附件区 */}
+        <div className="flex-shrink-0 max-w-[800px] w-full mx-auto pb-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleImageSelect}
+          />
+          {/* 图片缩略图网格 */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {images.map((img) => {
+                const cachedSrc = imageDataCache[img.id];
+                if (!cachedSrc) {
+                  // 懒加载图片数据
+                  loadImageData(img.id, img.file_path);
+                }
+                return (
+                  <div key={img.id} className="relative group/thumb">
+                    {cachedSrc ? (
+                      <img
+                        src={cachedSrc}
+                        alt={img.file_name}
+                        className="w-16 h-16 rounded-lg object-cover cursor-pointer"
+                        style={{ border: `1px solid ${withAlpha(appTheme.ink, 0.1)}` }}
+                        onClick={() => setViewingImage(cachedSrc)}
+                      />
+                    ) : (
+                      <div
+                        className="w-16 h-16 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: withAlpha(appTheme.ink, 0.05) }}
+                      >
+                        <ImagePlus size={16} style={{ color: withAlpha(appTheme.ink, 0.2) }} />
+                      </div>
+                    )}
+                    <button
+                      onClick={() => deleteImage(img.id)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity bg-black/60 text-white"
+                      aria-label="删除图片"
+                    >
+                      <X size={12} />
+                    </button>
+                    <button
+                      onClick={() => deleteImage(img.id)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity bg-black/60 text-white"
+                      aria-label="删除图片"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* 添加图片按钮 */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+            style={{
+              color: withAlpha(appTheme.ink, 0.4),
+              border: `1px dashed ${withAlpha(appTheme.ink, 0.2)}`,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = appTheme.ink;
+              e.currentTarget.style.borderColor = appTheme.primary;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = withAlpha(appTheme.ink, 0.4);
+              e.currentTarget.style.borderColor = withAlpha(appTheme.ink, 0.2);
+            }}
+          >
+            <ImagePlus size={14} />
+            添加图片
+          </button>
         </div>
       </div>
+
+      {/* 图片查看大图 */}
+      <ImageViewer
+        src={viewingImage}
+        onClose={() => setViewingImage(null)}
+      />
 
       {/* 底部操作栏 */}
       <div
@@ -214,7 +316,7 @@ export function DiaryPage() {
         </button>
         <button
           className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{ backgroundColor: appTheme.primary, color: '#fff' }}
+          style={{ backgroundColor: appTheme.primary, color: appTheme.onPrimary }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = appTheme.primaryFocus)}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = appTheme.primary)}
           onClick={handleRixing}
@@ -251,7 +353,7 @@ export function DiaryPage() {
                   <div
                     key={s.skill_id}
                     className="rounded-full px-4 py-1.5 flex items-center gap-2"
-                    style={{ backgroundColor: `${color}18` }}
+                    style={{ backgroundColor: `${withAlpha(color, 0.09)}` }}
                   >
                     <span className="text-sm" style={{ color }}>{s.skill_name}</span>
                     <span className="text-sm font-medium" style={{ color: appTheme.ink }}>+{s.xp}</span>
@@ -259,9 +361,14 @@ export function DiaryPage() {
                 );
               })}
             </div>
-            <p className="text-xs text-center" style={{ color: `${appTheme.ink}4D` }}>
-              共获得 {xpToast.xp_earned} XP · 点击关闭
-            </p>
+            <div className="flex items-center justify-center gap-4">
+              <span className="text-sm font-medium" style={{ color: '#D4A843' }}>
+                +{xpToast.glow_earned} 萤火
+              </span>
+              <span className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.3)}` }}>
+                {xpToast.xp_earned} XP · 点击关闭
+              </span>
+            </div>
           </div>
         </div>
       )}

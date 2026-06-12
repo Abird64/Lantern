@@ -1,6 +1,7 @@
 import type { Skill } from '@/types/skill';
 import { SKILL_COLORS, SKILL_ORDER } from '@/styles/theme';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface TitleSummaryProps {
   skills: Skill[];
@@ -15,6 +16,7 @@ const LEVEL_TITLES: Record<number, string> = {
 
 export function TitleSummary({ skills }: TitleSummaryProps) {
   const appTheme = useAppTheme();
+  const isMobile = useIsMobile();
   const totalLevel = skills.reduce((sum, s) => sum + s.level, 0);
   const totalXp = skills.reduce((sum, s) => sum + s.total_xp, 0);
 
@@ -27,25 +29,25 @@ export function TitleSummary({ skills }: TitleSummaryProps) {
 
   return (
     <div
-      className="backdrop-blur-sm rounded-2xl p-6 text-center"
-      style={{ backgroundColor: `${appTheme.ink}0D` }}
+      className={`rounded-2xl p-6 text-center ${isMobile ? '' : 'backdrop-blur-sm'}`}
+      style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.05)}` }}
     >
       <div className="flex items-center justify-center gap-6 mb-4">
         <div className="text-center">
           <div className="text-2xl font-bold" style={{ color: appTheme.ink }}>{totalLevel}</div>
-          <div className="text-xs" style={{ color: `${appTheme.ink}59` }}>等级总和</div>
+          <div className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.35)}` }}>等级总和</div>
         </div>
-        <div className="w-px h-8" style={{ backgroundColor: `${appTheme.ink}1A` }} />
+        <div className="w-px h-8" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.1)}` }} />
         <div className="text-center">
           <div className="text-2xl font-bold" style={{ color: appTheme.ink }}>{totalXp.toLocaleString()}</div>
-          <div className="text-xs" style={{ color: `${appTheme.ink}59` }}>总修为</div>
+          <div className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.35)}` }}>总经验值</div>
         </div>
-        <div className="w-px h-8" style={{ backgroundColor: `${appTheme.ink}1A` }} />
+        <div className="w-px h-8" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.1)}` }} />
         <div className="text-center">
           <div className="text-2xl font-bold" style={{ color: topSkill ? SKILL_COLORS[topSkill.id]?.hex || '#8A6DA7' : '#8A6DA7' }}>
             {topSkill ? SKILL_COLORS[topSkill.id]?.name : '-'}
           </div>
-          <div className="text-xs" style={{ color: `${appTheme.ink}59` }}>最高属性</div>
+          <div className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.35)}` }}>最高属性</div>
         </div>
       </div>
 

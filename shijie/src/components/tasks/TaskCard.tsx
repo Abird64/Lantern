@@ -1,6 +1,6 @@
 import { Check, Circle, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatDate, isOverdue } from '@/utils/dateFormat';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import type { Task } from '@/types/task';
 
 interface TaskCardProps {
@@ -32,19 +32,19 @@ export function TaskCard({
 }: TaskCardProps) {
   const appTheme = useAppTheme();
   const completed = task.status === 'completed';
-  const txtMid = appTheme.ink + '80';
-  const bgSubtle = appTheme.ink + '0D';
+  const txtMid = withAlpha(appTheme.ink, 0.5);
+  const bgSubtle = withAlpha(appTheme.ink, 0.05);
 
   const priorityConfig: Record<string, { label: string; color: string }> = {
-    high: { label: '紧急', color: '#E74C3C' },
-    medium: { label: '重要', color: '#F39C12' },
+    high: { label: '紧急', color: appTheme.danger },
+    medium: { label: '重要', color: appTheme.warning },
     low: { label: '一般', color: appTheme.primary },
   };
 
   return (
     <div>
       <div
-        className="rounded-[18px] p-4 cursor-pointer relative group h-[130px] overflow-hidden"
+        className="rounded-[18px] p-4 cursor-pointer relative group min-h-[130px]"
         style={{ backgroundColor: appTheme.canvas, border: `0.5px solid ${appTheme.hairline}` }}
         onClick={() => {
           if (multiSelectMode) {
@@ -61,7 +61,7 @@ export function TaskCard({
               onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
               className="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center mt-5 transition-colors"
               style={{
-                borderColor: isSelected ? appTheme.primary : '#ccc',
+                borderColor: isSelected ? appTheme.primary : appTheme.hairline,
                 backgroundColor: isSelected ? appTheme.primary : 'transparent',
               }}
             >
@@ -73,11 +73,11 @@ export function TaskCard({
             <div
               className="w-full h-full rounded-full flex items-center justify-center transition-colors"
               style={{
-                backgroundColor: completed ? '#D1FAE5' : '#E0F2FE',
-                border: `2px solid ${completed ? '#6EE7B7' : '#93C5FD'}`,
+                backgroundColor: completed ? withAlpha(appTheme.success, 0.12) : withAlpha(appTheme.primary, 0.08),
+                border: `2px solid ${completed ? withAlpha(appTheme.success, 0.5) : withAlpha(appTheme.primary, 0.25)}`,
               }}
             >
-              {completed && <Check size={20} style={{ color: '#6EE7B7' }} />}
+              {completed && <Check size={20} style={{ color: appTheme.success }} />}
             </div>
             {/* 快速完成按钮 */}
             {!completed && (
@@ -95,12 +95,12 @@ export function TaskCard({
           {/* 右侧信息 */}
           <div className="flex-1 min-w-0">
             <h3
-              className="text-lg font-normal mb-1 truncate"
-              style={{ color: completed ? appTheme.ink + '80' : appTheme.ink, textDecoration: completed ? 'line-through' : 'none' }}
+              className="text-lg font-normal mb-1 line-clamp-2"
+              style={{ color: completed ? withAlpha(appTheme.ink, 0.5) : appTheme.ink, textDecoration: completed ? 'line-through' : 'none' }}
             >
               {task.title}
             </h3>
-            <p className="text-sm mb-2" style={{ color: appTheme.ink + '99' }}>
+            <p className="text-sm mb-2" style={{ color: withAlpha(appTheme.ink, 0.6) }}>
               {task.scheduled_at ? formatDate(task.scheduled_at) : formatDate(task.created_at)}
             </p>
 
@@ -112,13 +112,13 @@ export function TaskCard({
                 </span>
               )}
               {task.xp_earned > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-sm text-[#4A90D9]">
-                  <Circle size={14} fill="#4A90D9" />
+                <span className="inline-flex items-center gap-1.5 text-sm" style={{ color: appTheme.warning }}>
+                  <Circle size={14} fill={appTheme.warning} />
                   XP+{task.xp_earned}
                 </span>
               )}
               {!completed && task.deadline && isOverdue(task.deadline) && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600">已过期</span>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: withAlpha(appTheme.danger, 0.12), color: appTheme.danger }}>已过期</span>
               )}
               {task.tags && <TagBadges tagsStr={task.tags} txtMid={txtMid} bgSubtle={bgSubtle} />}
             </div>
@@ -129,7 +129,7 @@ export function TaskCard({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSubtasks(task.id); }}
           className="absolute bottom-3 right-4 flex items-center gap-1 text-xs transition-colors"
-          style={{ color: appTheme.ink + '4D' }}
+          style={{ color: withAlpha(appTheme.ink, 0.45) }}
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           子任务
@@ -152,11 +152,11 @@ export function TaskCard({
               >
                 {sub.status === 'completed'
                   ? <Check size={14} style={{ color: appTheme.primary }} />
-                  : <Circle size={14} style={{ color: appTheme.ink + '33' }} />}
+                  : <Circle size={14} style={{ color: withAlpha(appTheme.ink, 0.2) }} />}
               </button>
               <span
                 className="text-sm truncate"
-                style={{ color: sub.status === 'completed' ? appTheme.ink + '66' : appTheme.ink + 'B3', textDecoration: sub.status === 'completed' ? 'line-through' : 'none' }}
+                style={{ color: sub.status === 'completed' ? withAlpha(appTheme.ink, 0.4) : withAlpha(appTheme.ink, 0.7), textDecoration: sub.status === 'completed' ? 'line-through' : 'none' }}
               >
                 {sub.title}
               </span>
@@ -166,7 +166,7 @@ export function TaskCard({
       )}
       {isExpanded && subtasks.length === 0 && (
         <div className="mt-1 ml-8">
-          <p className="text-xs px-4 py-2" style={{ color: appTheme.ink + '4D' }}>暂无子任务</p>
+          <p className="text-xs px-4 py-2" style={{ color: withAlpha(appTheme.ink, 0.3) }}>暂无子任务</p>
         </div>
       )}
     </div>

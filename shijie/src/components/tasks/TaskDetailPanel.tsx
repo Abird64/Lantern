@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Check, Circle, Trash2, Plus } from 'lucide-react';
+import { X, Check, Circle, Trash2, Plus, Timer, Sparkles } from 'lucide-react';
 import { SKILL_COLORS, SKILL_ORDER } from '@/styles/theme';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
+import { usePomodoroStore } from '@/stores/pomodoroStore';
+import { MindfulStart } from '@/components/pomodoro/MindfulStart';
 import * as skillService from '@/services/skillService';
 import { formatDateTime } from '@/utils/dateFormat';
 import type { Task } from '@/types/task';
@@ -45,6 +47,8 @@ export function TaskDetailPanel({
   onDeleteSubtask,
 }: TaskDetailPanelProps) {
   const appTheme = useAppTheme();
+  const { startFocus, phase } = usePomodoroStore();
+  const [showMindful, setShowMindful] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
   const [status, setStatus] = useState(task.status);
@@ -57,6 +61,7 @@ export function TaskDetailPanel({
   const [newTagInput, setNewTagInput] = useState('');
   const [skillXps, setSkillXps] = useState<Record<string, number>>({});
   const [subtaskTitle, setSubtaskTitle] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     setTitle(task.title);
@@ -75,8 +80,8 @@ export function TaskDetailPanel({
       const xpMap: Record<string, number> = {};
       ts.forEach((s) => { xpMap[s.skill_id] = s.xp_amount; });
       setSkillXps(xpMap);
-    }).catch(() => {});
-  }, [task]);
+    }).catch((e) => console.error('[TaskDetailPanel] Failed to load task skills:', e));
+  }, [task.id]);
 
   // 首次加载标记：task 切换时重置，等数据同步完再开启自动保存
   const initialLoadRef = useRef(true);
@@ -86,25 +91,83 @@ export function TaskDetailPanel({
     return () => clearTimeout(timer);
   }, [task.id]);
 
-  // 自动保存：任何字段变更后 600ms 自动保存
+  // Refs for latest values (used by unmount flush to avoid stale closures)
+  const skillXpsRef = useRef(skillXps);
+  skillXpsRef.current = skillXps;
+  const textSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef({ title, description, status, priority, deadline, scheduledAt, estimatedMinutes, notes, tags });
+  formRef.current = { title, description, status, priority, deadline, scheduledAt, estimatedMinutes, notes, tags };
+
+  // 自动保存：文本字段 600ms 防抖
   useEffect(() => {
     if (initialLoadRef.current) return;
     const timer = setTimeout(() => {
+      textSaveTimerRef.current = null;
+      const f = formRef.current;
       onSave(task.id, {
-        title: title.trim() || task.title,
-        description: description.trim() || undefined,
-        status: status !== task.status ? status : undefined,
-        priority: priority || undefined,
-        deadline: deadline || undefined,
-        scheduled_at: scheduledAt || undefined,
-        estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : undefined,
-        notes: notes.trim() || undefined,
-        tags: tags.length > 0 ? JSON.stringify(tags) : undefined,
-        skillXps,
+        title: f.title.trim() || task.title,
+        description: f.description.trim() || undefined,
+        status: f.status !== task.status ? f.status : undefined,
+        priority: f.priority || undefined,
+        deadline: f.deadline || undefined,
+        scheduled_at: f.scheduledAt || undefined,
+        estimated_minutes: f.estimatedMinutes ? parseInt(f.estimatedMinutes) : undefined,
+        notes: f.notes.trim() || undefined,
+        tags: f.tags.length > 0 ? JSON.stringify(f.tags) : undefined,
+        skillXps: skillXpsRef.current,
       });
     }, 600);
-    return () => clearTimeout(timer);
-  }, [title, description, status, priority, deadline, scheduledAt, estimatedMinutes, notes, tags, skillXps]);
+    textSaveTimerRef.current = timer;
+    return () => { clearTimeout(timer); textSaveTimerRef.current = null; };
+  }, [title, description, status, priority, deadline, scheduledAt, estimatedMinutes, notes, tags]);
+
+  // 属性加成：200ms 防抖，单独保存（不触发 updateTask）
+  const skillSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    const timer = setTimeout(() => {
+      skillSaveTimerRef.current = null;
+      const entries = Object.entries(skillXpsRef.current)
+        .filter(([_, v]) => v > 0)
+        .map(([skill_id, xp_amount]) => ({ skill_id, xp_amount }));
+      skillService.setTaskSkills(task.id, entries).catch(console.error);
+    }, 200);
+    skillSaveTimerRef.current = timer;
+    return () => { clearTimeout(timer); skillSaveTimerRef.current = null; };
+  }, [skillXps]);
+
+  // 面板关闭时立即刷新所有待保存数据
+  useEffect(() => {
+    return () => {
+      // Flush text field save
+      if (textSaveTimerRef.current) {
+        clearTimeout(textSaveTimerRef.current);
+        textSaveTimerRef.current = null;
+        const f = formRef.current;
+        onSave(task.id, {
+          title: f.title.trim() || task.title,
+          description: f.description.trim() || undefined,
+          status: f.status !== task.status ? f.status : undefined,
+          priority: f.priority || undefined,
+          deadline: f.deadline || undefined,
+          scheduled_at: f.scheduledAt || undefined,
+          estimated_minutes: f.estimatedMinutes ? parseInt(f.estimatedMinutes) : undefined,
+          notes: f.notes.trim() || undefined,
+          tags: f.tags.length > 0 ? JSON.stringify(f.tags) : undefined,
+          skillXps: skillXpsRef.current,
+        });
+      }
+      // Flush skill XP save
+      if (skillSaveTimerRef.current) {
+        clearTimeout(skillSaveTimerRef.current);
+        skillSaveTimerRef.current = null;
+        const entries = Object.entries(skillXpsRef.current)
+          .filter(([_, v]) => v > 0)
+          .map(([skill_id, xp_amount]) => ({ skill_id, xp_amount }));
+        skillService.setTaskSkills(task.id, entries).catch(console.error);
+      }
+    };
+  }, [task.id]);
 
   const handleAddSubtask = async () => {
     if (!subtaskTitle.trim()) return;
@@ -116,35 +179,35 @@ export function TaskDetailPanel({
     { value: 'pending', label: '待办', color: '#999' },
     { value: 'in_progress', label: '进行中', color: '#2A8CB7' },
     { value: 'completed', label: '已完成', color: appTheme.primary },
-    { value: 'cancelled', label: '已取消', color: '#E74C3C' },
+    { value: 'cancelled', label: '已取消', color: appTheme.danger },
   ] as const;
 
   const priorityOptions = [
     { value: '', label: '无', color: '#999' },
-    { value: 'high', label: '紧急', color: '#E74C3C' },
-    { value: 'medium', label: '重要', color: '#F39C12' },
+    { value: 'high', label: '紧急', color: appTheme.danger },
+    { value: 'medium', label: '重要', color: appTheme.warning },
     { value: 'low', label: '一般', color: appTheme.primary },
   ];
 
   // 动态颜色常量
   const txt = appTheme.ink;
-  const txtDim = txt + 'CC';       // 80%
-  const txtMid = txt + '80';       // 50%
-  const txtLight = txt + '4D';     // 30%
-  const txtHint = txt + '33';      // 20%
-  const txtMeta = txt + '66';      // 40%
-  const txtBody = txt + 'B3';      // 70%
-  const bgSubtle = txt + '0D';     // 5%
-  const bgHover = txt + '1A';      // 10%
-  const bgSubdued = txt + '08';    // 3%
-  const borderColor = txt + '14';  // 8%
+  const txtDim = withAlpha(txt, 0.8);       // 80%
+  const txtMid = withAlpha(txt, 0.5);       // 50%
+  const txtLight = withAlpha(txt, 0.3);     // 30%
+  const txtHint = withAlpha(txt, 0.35);     // 35%
+  const txtMeta = withAlpha(txt, 0.4);      // 40%
+  const txtBody = withAlpha(txt, 0.7);      // 70%
+  const bgSubtle = withAlpha(txt, 0.05);     // 5%
+  const bgHover = withAlpha(txt, 0.1);      // 10%
+  const bgSubdued = withAlpha(txt, 0.03);    // 3%
+  const borderColor = withAlpha(txt, 0.08);  // 8%
 
   return (
     <>
       <style>{`
-        #task-detail-panel .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${appTheme.primary}4D; }
+        #task-detail-panel .focus-ring-accent:focus { outline: none; box-shadow: 0 0 0 2px ${withAlpha(appTheme.primary, 0.3)}; }
         #task-detail-panel .btn-accent { background-color: ${appTheme.primary}; }
-        #task-detail-panel .btn-accent:hover { background-color: ${appTheme.primary}DD; }
+        #task-detail-panel .btn-accent:hover { background-color: ${withAlpha(appTheme.primary, 0.87)}; }
         #task-detail-panel input::placeholder,
         #task-detail-panel textarea::placeholder { color: ${txtHint}; }
       `}</style>
@@ -180,7 +243,7 @@ export function TaskDetailPanel({
                 <button key={s.value} onClick={() => setStatus(s.value)}
                   className="px-4 py-1.5 rounded-full text-sm transition-all"
                   style={status === s.value
-                    ? { backgroundColor: s.color, color: '#fff' }
+                    ? { backgroundColor: s.color, color: appTheme.onPrimary }
                     : { color: txtMid, backgroundColor: bgSubtle }}>
                   {s.label}
                 </button>
@@ -202,7 +265,7 @@ export function TaskDetailPanel({
                 <button key={p.value} onClick={() => setPriority(p.value)}
                   className="px-4 py-1.5 rounded-full text-sm transition-all"
                   style={priority === p.value
-                    ? { backgroundColor: p.color, color: '#fff' }
+                    ? { backgroundColor: p.color, color: appTheme.onPrimary }
                     : { color: txtMid, backgroundColor: bgSubtle }}>
                   {p.label}
                 </button>
@@ -357,7 +420,7 @@ export function TaskDetailPanel({
               <button onClick={handleAddSubtask} disabled={!subtaskTitle.trim()}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all"
                 style={subtaskTitle.trim()
-                  ? { backgroundColor: appTheme.primary, color: '#fff' }
+                  ? { backgroundColor: appTheme.primary, color: appTheme.onPrimary }
                   : { backgroundColor: bgSubtle, color: txtHint }}>
                 <Plus size={16} />
               </button>
@@ -366,25 +429,55 @@ export function TaskDetailPanel({
         </div>
 
         {/* 底部操作 */}
-        <div className="p-6 border-t" style={{ borderColor }}>
+        <div className="p-6 border-t space-y-3" style={{ borderColor }}>
+          {/* 番茄钟 + 正念启动 */}
+          {task.status !== 'completed' && task.status !== 'cancelled' && phase === 'idle' && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowMindful(true)}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: withAlpha(SKILL_COLORS.creativity.hex, 0.1),
+                  color: SKILL_COLORS.creativity.hex,
+                }}
+              >
+                <Sparkles size={15} />
+                正念启动
+              </button>
+              <button
+                onClick={() => startFocus(task.id, task.title)}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: withAlpha(SKILL_COLORS.focus.hex, 0.1),
+                  color: SKILL_COLORS.focus.hex,
+                }}
+              >
+                <Timer size={15} />
+                番茄钟
+              </button>
+            </div>
+          )}
           <div className="flex gap-3">
             {task.status !== 'completed' ? (
               <button onClick={() => onComplete(task.id)}
                 className="flex-1 py-3 rounded-2xl text-white text-base transition-colors flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#2A8CB7' }}>
+                style={{ backgroundColor: '#4CAF50' }}>
                 <Check size={16} />
-                完成任务 +XP
+                完成任务
               </button>
             ) : (
               <button onClick={() => onUncomplete(task.id)}
                 className="flex-1 py-3 rounded-2xl text-white text-base transition-colors flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#F39C12' }}>
+                style={{ backgroundColor: appTheme.warning }}>
                 <Circle size={16} />
-                取消完成 -XP
+                取消完成
               </button>
             )}
-            <button onClick={() => onDelete(task.id)}
-              className="flex-1 py-3 rounded-2xl bg-red-50 text-red-500 text-base hover:bg-red-100 transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => setShowDeleteConfirm(true)}
+              className="py-3 px-4 rounded-2xl text-base transition-colors flex items-center justify-center gap-2"
+              style={{ backgroundColor: withAlpha(appTheme.danger, 0.1), color: appTheme.danger }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = withAlpha(appTheme.danger, 0.18))}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = withAlpha(appTheme.danger, 0.1))}>
               <Trash2 size={16} />
               删除
             </button>
@@ -392,6 +485,34 @@ export function TaskDetailPanel({
         </div>
       </div>
     </div>
+    {showDeleteConfirm && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setShowDeleteConfirm(false)}>
+        <div className="rounded-2xl p-6 mx-4 w-[320px]" style={{ backgroundColor: appTheme.canvas }} onClick={(e) => e.stopPropagation()}>
+          <p className="text-base mb-6" style={{ color: txtDim }}>这个任务一旦删除，就不能回来了。确定吗？</p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+              style={{ color: txtMid, backgroundColor: bgSubtle }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = bgHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = bgSubtle)}>
+              取消
+            </button>
+            <button onClick={() => { onDelete(task.id); setShowDeleteConfirm(false); }}
+              className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+              style={{ backgroundColor: appTheme.danger, color: '#fff' }}>
+              确认删除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <MindfulStart
+      open={showMindful}
+      onClose={() => setShowMindful(false)}
+      taskTitle={task.title}
+      taskDescription={task.description || undefined}
+      taskId={task.id}
+    />
     </>
   );
 }

@@ -1,0 +1,71 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 浅色底 -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f0faf4" />
+      <stop offset="100%" stop-color="#e0f0e8" />
+    </radialGradient>
+
+    <!-- 绿色光团：中心亮，向外渐消 -->
+    <radialGradient id="glow" cx="50%" cy="52%" r="38%">
+      <stop offset="0%" stop-color="#5ddb8a" stop-opacity="0.7" />
+      <stop offset="30%" stop-color="#4CAF76" stop-opacity="0.4" />
+      <stop offset="60%" stop-color="#4CAF76" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#e0f0e8" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- 灯体填充：半透明绿 -->
+    <radialGradient id="lanternFill" cx="50%" cy="55%" r="50%">
+      <stop offset="0%" stop-color="#4CAF76" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#4CAF76" stop-opacity="0.08" />
+    </radialGradient>
+
+    <!-- 灯体裁剪 -->
+    <clipPath id="bodyClip">
+      <path d="M195,195 L140,300 L195,430 L317,430 L372,300 L317,195 Z" />
+    </clipPath>
+
+    <!-- 顶部提手裁剪 -->
+    <clipPath id="handleClip">
+      <rect x="0" y="0" width="512" height="175" />
+    </clipPath>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- 光团 -->
+  <ellipse cx="256" cy="280" rx="180" ry="200" fill="url(#glow)" />
+
+  <!-- 灯体填充 -->
+  <g clip-path="url(#bodyClip)">
+    <path d="M195,195 L140,300 L195,430 L317,430 L372,300 L317,195 Z" fill="url(#lanternFill)" />
+    <!-- 眼睛 -->
+    <line x1="220" y1="285" x2="220" y2="305" stroke="#2d8a56" stroke-width="14" stroke-linecap="round" opacity="0.9" />
+    <line x1="292" y1="285" x2="292" y2="305" stroke="#2d8a56" stroke-width="14" stroke-linecap="round" opacity="0.9" />
+  </g>
+
+  <!-- 提手 -->
+  <g clip-path="url(#handleClip)">
+    <ellipse cx="256" cy="120" rx="70" ry="70" fill="none" stroke="rgba(45,138,86,0.55)" stroke-width="5" />
+    <ellipse cx="256" cy="120" rx="52" ry="52" fill="none" stroke="rgba(45,138,86,0.35)" stroke-width="3" />
+  </g>
+
+  <!-- 顶部连接 -->
+  <rect x="230" y="155" width="52" height="16" rx="3" fill="none" stroke="rgba(45,138,86,0.5)" stroke-width="4" />
+  <rect x="185" y="171" width="142" height="24" rx="4" fill="none" stroke="rgba(45,138,86,0.5)" stroke-width="4" />
+
+  <!-- 灯体外框 -->
+  <path d="M185,195 L125,300 L185,430" fill="none" stroke="rgba(45,138,86,0.45)" stroke-width="4" />
+  <path d="M327,195 L387,300 L327,430" fill="none" stroke="rgba(45,138,86,0.45)" stroke-width="4" />
+  <path d="M195,195 L140,300 L195,430" fill="none" stroke="rgba(45,138,86,0.25)" stroke-width="3" />
+  <path d="M317,195 L372,300 L317,430" fill="none" stroke="rgba(45,138,86,0.25)" stroke-width="3" />
+
+  <!-- 玻璃罩连接 -->
+  <line x1="185" y1="195" x2="195" y2="195" stroke="rgba(45,138,86,0.5)" stroke-width="4" />
+  <line x1="317" y1="195" x2="327" y2="195" stroke="rgba(45,138,86,0.5)" stroke-width="4" />
+
+  <!-- 底座 -->
+  <rect x="175" y="430" width="162" height="18" rx="3" fill="none" stroke="rgba(45,138,86,0.45)" stroke-width="4" />
+  <rect x="155" y="448" width="202" height="22" rx="4" fill="none" stroke="rgba(45,138,86,0.45)" stroke-width="4" />
+</svg>

@@ -1,19 +1,21 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, X, Search, ArrowUpDown, ListChecks } from 'lucide-react';
 import { CapsuleTabs, NavBar } from '@/components/ui';
 import { PageContainer } from '@/components/layout';
-import { useAppTheme } from '@/stores/themeStore';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTaskStore } from '@/stores/taskStore';
 import { useSkillStore } from '@/stores/skillStore';
 import * as skillService from '@/services/skillService';
 import { isToday, isFuture, isOverdue } from '@/utils/dateFormat';
-import type { Task } from '@/types/task';
+import type { Task, CompleteResult } from '@/types/task';
 import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
 import type { CreateTaskData } from '@/components/tasks/CreateTaskModal';
 import { TaskDetailPanel } from '@/components/tasks/TaskDetailPanel';
 import type { SaveData } from '@/components/tasks/TaskDetailPanel';
 import { BatchOperationsBar } from '@/components/tasks/BatchOperationsBar';
 import { TaskCard } from '@/components/tasks/TaskCard';
+import { RewardPopup } from '@/components/tasks/RewardPopup';
 
 // ========== 常量 ==========
 
@@ -81,11 +83,12 @@ function filterTasks(tasks: Task[], tabId: string, searchQuery: string): Task[] 
 
 export function TasksPage() {
   const appTheme = useAppTheme();
+  const isMobile = useIsMobile();
   const txt = appTheme.ink;
-  const txtLight = txt + '4D';
-  const txtMid = txt + '80';
-  const txtMeta = txt + '66';
-  const bgSubtle = txt + '0D';
+  const txtLight = withAlpha(txt, 0.3);
+  const txtMid = withAlpha(txt, 0.5);
+  const txtMeta = withAlpha(txt, 0.4);
+  const bgSubtle = withAlpha(txt, 0.05);
   // 列表状态
   const [activeCategory, setActiveCategory] = useState('wanxiang');
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,8 +110,13 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailSubtasks, setDetailSubtasks] = useState<Task[]>([]);
 
+  // Reward popup
+  const [rewardResult, setRewardResult] = useState<CompleteResult | null>(null);
+
   // Toast
   const [toast, setToast] = useState('');
+  // 确认
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
 
   const { tasks, isLoading, fetchTasks, completeTask, uncompleteTask, createTask, updateTask, deleteTask, fetchSubtasks } = useTaskStore();
   const { fetchSkills } = useSkillStore();
@@ -163,7 +171,10 @@ export function TasksPage() {
 
   const handleQuickComplete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    try { await completeTask(id); } catch (err) { console.error('完成任务失败:', err); }
+    try {
+      const result = await completeTask(id);
+      setRewardResult(result);
+    } catch { showToast('操作失败，请重试', 3000); }
   };
 
   const handleSubtaskComplete = async (id: string) => {
@@ -173,7 +184,7 @@ export function TasksPage() {
         const subs = await fetchSubtasks(selectedTask.id);
         setDetailSubtasks(subs);
       }
-    } catch { /* skip */ }
+    } catch { showToast('操作失败，请重试', 3000); }
   };
 
   const toggleSubtasks = useCallback(async (taskId: string) => {
@@ -196,6 +207,7 @@ export function TasksPage() {
       scheduled_at: data.scheduled_at,
       deadline: data.deadline,
       estimated_minutes: data.estimated_minutes,
+      glow_reward: data.glow_reward,
       tags: data.tags,
     });
     const skillEntries = Object.entries(data.skillXps)
@@ -228,8 +240,9 @@ export function TasksPage() {
   };
 
   const handleCompleteFromDetail = async (id: string) => {
-    await completeTask(id);
+    const result = await completeTask(id);
     closeDetail();
+    setRewardResult(result);
   };
 
   const handleUncompleteFromDetail = async (id: string) => {
@@ -256,22 +269,31 @@ export function TasksPage() {
   // ========== 批量操作 ==========
 
   const handleBatchComplete = async () => {
+    let ok = 0;
     for (const id of selectedIds) {
       const task = tasks.find((t) => t.id === id);
       if (task && task.status !== 'completed') {
-        try { await completeTask(id); } catch { /* skip */ }
+        try { await completeTask(id); ok++; } catch { /* skip */ }
       }
     }
+    if (ok > 0) showToast(`已完成 ${ok} 个任务`, 2000);
     setSelectedIds(new Set());
     setMultiSelectMode(false);
   };
 
-  const handleBatchDelete = async () => {
+  const executeBatchDelete = async () => {
+    let ok = 0;
     for (const id of selectedIds) {
-      try { await deleteTask(id); } catch { /* skip */ }
+      try { await deleteTask(id); ok++; } catch { /* skip */ }
     }
+    if (ok > 0) showToast(`已删除 ${ok} 个任务`, 2000);
     setSelectedIds(new Set());
     setMultiSelectMode(false);
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return;
+    setShowBatchDeleteConfirm(true);
   };
 
   // ========== 渲染 ==========
@@ -285,7 +307,7 @@ export function TasksPage() {
   };
 
   return (
-    <PageContainer className="relative">
+    <PageContainer className="relative" style={{ '--ink-25': withAlpha(appTheme.ink, 0.25), '--ink-30': withAlpha(appTheme.ink, 0.3), '--primary': appTheme.primary, '--primary-30': withAlpha(appTheme.primary, 0.3), '--primary-87': withAlpha(appTheme.primary, 0.87) } as React.CSSProperties}>
       <NavBar title="任务" />
 
       {/* 固定控制区 */}
@@ -299,8 +321,8 @@ export function TasksPage() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: txtLight }} />
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索任务..."
-              className="w-full backdrop-blur-sm rounded-full pl-11 pr-4 py-3 text-base focus:outline-none task-search-input transition-all"
-              style={{ backgroundColor: appTheme.canvas + '99', color: txt }} />
+              className={`w-full rounded-full pl-11 pr-4 py-3 text-base focus:outline-none task-search-input transition-all ${isMobile ? '' : 'backdrop-blur-sm'}`}
+              style={{ backgroundColor: withAlpha(appTheme.canvas, 0.6), color: txt }} />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 transition-colors"
                 style={{ color: txtLight }}
@@ -312,10 +334,12 @@ export function TasksPage() {
           </div>
           <div className="relative">
             <button onClick={() => setShowSortMenu(!showSortMenu)}
-              className="w-11 h-11 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors"
-              style={{ backgroundColor: appTheme.canvas + '99', color: txtMeta }}
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-colors ${isMobile ? '' : 'backdrop-blur-sm'}`}
+              style={{ backgroundColor: withAlpha(appTheme.canvas, 0.6), color: txtMeta }}
               onMouseEnter={(e) => (e.currentTarget.style.color = txtMid)}
-              onMouseLeave={(e) => (e.currentTarget.style.color = txtMeta)}>
+              onMouseLeave={(e) => (e.currentTarget.style.color = txtMeta)}
+              title="排序"
+              aria-label="排序方式">
               <ArrowUpDown size={18} />
             </button>
             {showSortMenu && (
@@ -344,10 +368,12 @@ export function TasksPage() {
           <button onClick={() => { setMultiSelectMode(!multiSelectMode); if (multiSelectMode) setSelectedIds(new Set()); }}
             className="w-11 h-11 rounded-full flex items-center justify-center transition-colors"
             style={multiSelectMode
-              ? { backgroundColor: appTheme.primary, color: '#fff' }
-              : { backgroundColor: appTheme.canvas + '99', color: txtMeta }}
+              ? { backgroundColor: appTheme.primary, color: appTheme.onPrimary }
+              : { backgroundColor: withAlpha(appTheme.canvas, 0.6), color: txtMeta }}
             onMouseEnter={!multiSelectMode ? (e) => (e.currentTarget.style.color = txtMid) : undefined}
-            onMouseLeave={!multiSelectMode ? (e) => (e.currentTarget.style.color = txtMeta) : undefined}>
+            onMouseLeave={!multiSelectMode ? (e) => (e.currentTarget.style.color = txtMeta) : undefined}
+            title="批量操作"
+            aria-label="批量操作">
             <ListChecks size={18} />
           </button>
         </div>
@@ -429,29 +455,38 @@ export function TasksPage() {
         </button>
       )}
 
+      {/* 批量删除确认 */}
+      {showBatchDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setShowBatchDeleteConfirm(false)}>
+          <div className="rounded-2xl p-6 mx-4 w-[320px]" style={{ backgroundColor: appTheme.canvas }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-base mb-6" style={{ color: txtMid }}>确定要删除选中的 {selectedIds.size} 个任务吗？一旦删除，就不能回来了。</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowBatchDeleteConfirm(false)}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+                style={{ color: txtMid, backgroundColor: bgSubtle }}>
+                取消
+              </button>
+              <button onClick={() => { executeBatchDelete(); setShowBatchDeleteConfirm(false); }}
+                className="flex-1 py-2.5 rounded-2xl text-sm transition-colors"
+                style={{ backgroundColor: appTheme.danger, color: '#fff' }}>
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[60] bg-black/80 text-white px-6 py-3 rounded-2xl text-sm max-w-[500px]">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-2xl text-sm max-w-[500px]"
+          style={{ backgroundColor: appTheme.surfaceDark2, color: appTheme.ink }}>
           {toast}
         </div>
       )}
 
-      {/* 全局样式 */}
-      <style>{`
-        @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        .animate-slide-in { animation: slide-in 0.25s ease-out; }
-        .date-input, .time-input { -webkit-appearance: none; appearance: none; background: transparent; border: none; outline: none; font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
-        .date-input::-webkit-calendar-picker-indicator, .time-input::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; filter: grayscale(1); }
-        .date-input::-webkit-calendar-picker-indicator:hover, .time-input::-webkit-calendar-picker-indicator:hover { opacity: 0.7; }
-        .date-input::-webkit-datetime-edit, .time-input::-webkit-datetime-edit { color: inherit; }
-        .date-input::-webkit-datetime-edit-fields-wrapper, .time-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
-        .date-input::-webkit-datetime-edit-text, .time-input::-webkit-datetime-edit-text { color: ${appTheme.ink}40; padding: 0 1px; }
-        .date-input::-webkit-datetime-edit-month-field, .date-input::-webkit-datetime-edit-day-field, .date-input::-webkit-datetime-edit-year-field, .time-input::-webkit-datetime-edit-hour-field, .time-input::-webkit-datetime-edit-minute-field { color: inherit; }
-        .task-search-input:focus { box-shadow: 0 0 0 2px ${appTheme.primary}4D; }
-        .task-search-input::placeholder { color: ${appTheme.ink}4D; }
-        .task-fab { background-color: ${appTheme.primary}; }
-        .task-fab:hover { background-color: ${appTheme.primary}DD; }
-      `}</style>
+      {/* 结算卡片 */}
+      <RewardPopup result={rewardResult} onClose={() => setRewardResult(null)} />
+
     </PageContainer>
   );
 }

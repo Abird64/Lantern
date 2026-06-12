@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Calendar } from '@/types/schedule';
 import * as calendarService from '@/services/calendarService';
+import { triggerSync } from '@/stores/syncStore';
 
 interface CalendarState {
   calendars: Calendar[];
@@ -27,7 +28,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       const calendars = await calendarService.listCalendars();
       const visibleSet = new Set(calendars.map((c) => c.id));
       set({ calendars, visibleCalendarIds: visibleSet, isLoading: false });
-    } catch {
+    } catch (e) {
+      console.error('Failed to fetch calendars:', e);
       set({ isLoading: false });
     }
   },
@@ -40,6 +42,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       visibleSet.add(calendar.id);
       return { calendars: updated, visibleCalendarIds: visibleSet };
     });
+    triggerSync();
     return calendar;
   },
 
@@ -48,6 +51,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set((state) => ({
       calendars: state.calendars.map((c) => (c.id === id ? calendar : c)),
     }));
+    triggerSync();
     return calendar;
   },
 
@@ -61,6 +65,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
         visibleCalendarIds: visibleSet,
       };
     });
+    triggerSync();
   },
 
   toggleCalendar: (id) => {

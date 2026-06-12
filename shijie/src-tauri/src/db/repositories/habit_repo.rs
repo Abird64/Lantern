@@ -98,7 +98,7 @@ pub fn create_habit(
 /// 获取单个习惯
 pub fn get_habit(conn: &Connection, id: &str) -> Result<Habit, String> {
     conn.query_row(
-        &format!("SELECT {} FROM habits WHERE id = ?1", HABIT_COLUMNS),
+        &format!("SELECT {} FROM habits WHERE id = ?1 AND deleted_at IS NULL", HABIT_COLUMNS),
         params![id],
         habit_from_row,
     )
@@ -176,11 +176,12 @@ pub fn update_habit(
     get_habit(conn, id)
 }
 
-/// 删除习惯（级联删除记录）
+/// 删除习惯（级联软删除记录）
 pub fn delete_habit(conn: &Connection, id: &str) -> Result<u64, String> {
-    conn.execute("DELETE FROM habit_records WHERE habit_id = ?1", params![id])
+    let time = now();
+    conn.execute("UPDATE habit_records SET deleted_at = ?1 WHERE habit_id = ?2 AND deleted_at IS NULL", params![time, id])
         .map_err(|e| format!("Failed to delete habit records: {}", e))?;
-    let affected = conn.execute("DELETE FROM habits WHERE id = ?1", params![id])
+    let affected = conn.execute("UPDATE habits SET deleted_at = ?1 WHERE id = ?2", params![time, id])
         .map_err(|e| format!("Failed to delete habit: {}", e))?;
     Ok(affected as u64)
 }
@@ -189,7 +190,7 @@ pub fn delete_habit(conn: &Connection, id: &str) -> Result<u64, String> {
 pub fn list_habits(conn: &Connection) -> Result<Vec<Habit>, String> {
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT {} FROM habits WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC",
+            "SELECT {} FROM habits WHERE is_active = 1 AND deleted_at IS NULL ORDER BY sort_order ASC, created_at ASC",
             HABIT_COLUMNS
         ))
         .map_err(|e| format!("Failed to prepare list_habits: {}", e))?;
@@ -205,32 +206,126 @@ pub fn list_habits(conn: &Connection) -> Result<Vec<Habit>, String> {
     Ok(results)
 }
 
-/// 打卡
-pub fn check_habit(conn: &Connection, habit_id: &str, date: Option<&str>, note: Option<&str>) -> Result<HabitRecord, String> {
+/// 打卡（含 XP / 萤火 / 技能奖励）
+pub fn check_habit(
+    conn: &mut Connection,
+    habit_id: &str,
+    date: Option<&str>,
+    note: Option<&str>,
+) -> Result<super::task_repo::CompleteResult, String> {
     let checked_at = date.map(|d| d.to_string()).unwrap_or_else(today);
     let id = gen_id();
     let time = now();
 
-    conn.execute(
-        "INSERT INTO habit_records (id, habit_id, checked_at, note, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+    // 获取习惯信息（xp_per_check, skill_id）
+    let habit = get_habit(conn, habit_id)?;
+    let xp_reward = habit.xp_per_check;
+    let glow_reward = xp_reward; // 萤火 = XP
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    // 清理同一天已软删除的旧记录（取消打卡后再打卡的场景）
+    let _ = tx.execute(
+        "DELETE FROM habit_records WHERE habit_id = ?1 AND checked_at = ?2 AND deleted_at IS NOT NULL",
+        params![habit_id, checked_at],
+    );
+
+    // 插入打卡记录
+    tx.execute(
+        "INSERT INTO habit_records (id, habit_id, checked_at, note, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
         params![id, habit_id, checked_at, note, time],
     )
     .map_err(|e| format!("Failed to check habit (may already be checked today): {}", e))?;
 
-    conn.query_row(
-        "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE id = ?1",
-        params![id],
-        record_from_row,
-    )
-    .map_err(|e| format!("Failed to read created record: {}", e))
+    // 奖励萤火
+    if glow_reward > 0 {
+        tx.execute(
+            "UPDATE glow_balances SET glow_amount = glow_amount + ?1, updated_at = ?2 WHERE id = 'user'",
+            params![glow_reward, time],
+        )
+        .map_err(|e| format!("Failed to add habit glow reward: {}", e))?;
+
+        let balance_after: i32 = tx
+            .query_row("SELECT glow_amount FROM glow_balances WHERE id = 'user'", [], |row| row.get(0))
+            .unwrap_or(0);
+        let ledger_id = gen_id();
+        let _ = tx.execute(
+            "INSERT INTO glow_ledger (id, asset_type, change_amount, balance_after, reason, source_desc, related_id, created_at)
+             VALUES (?1, 'glow', ?2, ?3, 'habit_check', ?4, ?5, ?6)",
+            params![
+                ledger_id,
+                glow_reward,
+                balance_after,
+                format!("习惯打卡「{}」", habit.name),
+                habit_id,
+                time,
+            ],
+        );
+    }
+
+    // 奖励技能 XP
+    let mut skill_xps: Vec<super::task_repo::SkillXp> = Vec::new();
+    if let Some(ref skill_id_str) = habit.skill_id {
+        if !skill_id_str.is_empty() && xp_reward > 0 {
+            // 更新技能 total_xp
+            tx.execute(
+                "UPDATE skills SET total_xp = total_xp + ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![xp_reward, time, skill_id_str],
+            )
+            .map_err(|e| format!("Failed to update skill xp: {}", e))?;
+
+            // 记录 skill_event
+            let event_id = gen_id();
+            tx.execute(
+                "INSERT INTO skill_events (id, skill_id, xp_amount, source_type, source_id, note, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'habit', ?4, '习惯打卡', ?5, ?5)",
+                params![event_id, skill_id_str, xp_reward, habit_id, time],
+            )
+            .map_err(|e| format!("Failed to create skill event: {}", e))?;
+
+            // 获取技能名称
+            let skill_name: String = tx
+                .query_row(
+                    "SELECT name FROM skills WHERE id = ?1 AND deleted_at IS NULL",
+                    params![skill_id_str],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "未知技能".to_string());
+
+            skill_xps.push(super::task_repo::SkillXp {
+                skill_id: skill_id_str.clone(),
+                skill_name,
+                xp: xp_reward,
+            });
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+    // 升级检查
+    if let Some(ref skill_id_str) = habit.skill_id {
+        if !skill_id_str.is_empty() && xp_reward > 0 {
+            super::skill_repo::check_level_up(conn, skill_id_str)?;
+        }
+    }
+
+    Ok(super::task_repo::CompleteResult {
+        xp_earned: xp_reward,
+        glow_earned: glow_reward,
+        skill_xps,
+    })
 }
 
 /// 取消打卡
 pub fn uncheck_habit(conn: &Connection, habit_id: &str, date: Option<&str>) -> Result<u64, String> {
     let checked_at = date.map(|d| d.to_string()).unwrap_or_else(today);
+    let time = now();
     let affected = conn.execute(
-        "DELETE FROM habit_records WHERE habit_id = ?1 AND checked_at = ?2",
-        params![habit_id, checked_at],
+        "UPDATE habit_records SET deleted_at = ?1 WHERE habit_id = ?2 AND checked_at = ?3 AND deleted_at IS NULL",
+        params![time, habit_id, checked_at],
     )
     .map_err(|e| format!("Failed to uncheck habit: {}", e))?;
     Ok(affected as u64)
@@ -239,10 +334,10 @@ pub fn uncheck_habit(conn: &Connection, habit_id: &str, date: Option<&str>) -> R
 /// 获取某习惯的打卡记录
 pub fn get_records(conn: &Connection, habit_id: &str, start_date: Option<&str>, end_date: Option<&str>) -> Result<Vec<HabitRecord>, String> {
     let sql = match (start_date, end_date) {
-        (Some(_), Some(_)) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at >= ?2 AND checked_at <= ?3 ORDER BY checked_at ASC",
-        (Some(_), None) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at >= ?2 ORDER BY checked_at ASC",
-        (None, Some(_)) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at <= ?2 ORDER BY checked_at ASC",
-        (None, None) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 ORDER BY checked_at ASC",
+        (Some(_), Some(_)) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at >= ?2 AND checked_at <= ?3 AND deleted_at IS NULL ORDER BY checked_at ASC",
+        (Some(_), None) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at >= ?2 AND deleted_at IS NULL ORDER BY checked_at ASC",
+        (None, Some(_)) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND checked_at <= ?2 AND deleted_at IS NULL ORDER BY checked_at ASC",
+        (None, None) => "SELECT id, habit_id, checked_at, note, created_at FROM habit_records WHERE habit_id = ?1 AND deleted_at IS NULL ORDER BY checked_at ASC",
     };
 
     let mut stmt = conn.prepare(sql).map_err(|e| format!("Failed to prepare get_records: {}", e))?;
@@ -268,7 +363,7 @@ pub fn get_streak(conn: &Connection, habit_id: &str) -> Result<i32, String> {
 
     // 获取所有打卡日期，降序
     let mut stmt = conn
-        .prepare("SELECT checked_at FROM habit_records WHERE habit_id = ?1 ORDER BY checked_at DESC")
+        .prepare("SELECT checked_at FROM habit_records WHERE habit_id = ?1 AND deleted_at IS NULL ORDER BY checked_at DESC")
         .map_err(|e| format!("Failed to prepare get_streak: {}", e))?;
 
     let dates: Vec<String> = stmt
@@ -330,7 +425,7 @@ pub fn get_all_streaks(conn: &Connection) -> Result<Vec<HabitWithStreak>, String
         // 检查今天是否打卡
         let checked_today: bool = conn
             .query_row(
-                "SELECT COUNT(*) FROM habit_records WHERE habit_id = ?1 AND checked_at = ?2",
+                "SELECT COUNT(*) FROM habit_records WHERE habit_id = ?1 AND checked_at = ?2 AND deleted_at IS NULL",
                 params![habit.id, today_str],
                 |row| row.get::<_, i32>(0),
             )

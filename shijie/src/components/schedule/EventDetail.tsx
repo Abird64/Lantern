@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useAppTheme } from '@/stores/themeStore';
+import { Select } from '@/components/ui/Select';
+import { useAppTheme, withAlpha } from '@/stores/themeStore';
 import { useCalendarStore } from '@/stores/calendarStore';
 import type { Schedule, UpdateScheduleInput } from '@/types/schedule';
 
@@ -12,6 +13,7 @@ interface EventDetailProps {
   /** 删除重复事件的单次实例：baseId, dateStr */
   onDeleteInstance?: (baseId: string, dateStr: string) => void;
   onClose: () => void;
+  isSubmitting?: boolean;
 }
 
 function toLocalDatetime(isoStr: string): string {
@@ -44,7 +46,7 @@ function parseRecurringInstanceId(id: string): { baseId: string; dateStr: string
 
 type EditScope = 'this' | 'all';
 
-export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDeleteInstance, onClose }: EventDetailProps) {
+export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDeleteInstance, onClose, isSubmitting }: EventDetailProps) {
   const appTheme = useAppTheme();
   const { calendars, getCalendarById } = useCalendarStore();
   const inputBg = appTheme.canvasParchment;
@@ -59,7 +61,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaveHovered, setIsSaveHovered] = useState(false);
   const [isCloseHovered, setIsCloseHovered] = useState(false);
-  const [showScopeChoice, setShowScopeChoice] = useState<'edit' | 'delete' | null>(null);
+  const [deleteScope, setDeleteScope] = useState<EditScope>('all');
 
   const isTaskSync = event.source_type === 'task_sync';
   const bgColor = event.color || appTheme.primary;
@@ -91,49 +93,24 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
   };
 
   const handleEditClick = () => {
-    if (isRecurringInstance) {
-      setShowScopeChoice('edit');
-    } else {
-      setIsEditing(true);
-    }
+    setEditScope('this');
+    setIsEditing(true);
   };
 
-  const handleScopeChoice = (scope: EditScope) => {
-    setShowScopeChoice(null);
-    if (showScopeChoice === 'edit') {
-      if (scope === 'this' && onUpdateInstance) {
-        // 单次编辑：直接进入编辑模式，保存时再处理
-        setIsEditing(true);
-        // 标记当前编辑模式
-        setEditScope('this');
-      } else {
-        // 编辑所有：用 baseId 进入编辑
-        setIsEditing(true);
-        setEditScope('all');
-      }
-    } else if (showScopeChoice === 'delete') {
-      if (scope === 'this' && onDeleteInstance && recurringInfo) {
-        onDeleteInstance(recurringInfo.baseId, recurringInfo.dateStr);
-      } else {
-        const targetId = isRecurringInstance && recurringInfo ? recurringInfo.baseId : event.id;
-        onDelete(targetId);
-      }
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const [editScope, setEditScope] = useState<EditScope>('all');
+  const [editScope, setEditScope] = useState<EditScope>('this');
 
   const handleDeleteClick = () => {
-    if (isRecurringInstance) {
-      setShowScopeChoice('delete');
-    } else {
-      setShowDeleteConfirm(true);
-    }
+    setDeleteScope('all');
+    setShowDeleteConfirm(true);
   };
 
   const handleDelete = () => {
-    onDelete(event.id);
+    if (isRecurringInstance && deleteScope === 'this' && onDeleteInstance && recurringInfo) {
+      onDeleteInstance(recurringInfo.baseId, recurringInfo.dateStr);
+    } else {
+      const targetId = isRecurringInstance && recurringInfo ? recurringInfo.baseId : event.id;
+      onDelete(targetId);
+    }
     setShowDeleteConfirm(false);
   };
 
@@ -143,11 +120,11 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
       onClick={onClose}
     >
       <style>{`
-        .event-detail-edit-btn { color: ${appTheme.ink}80; }
+        .event-detail-edit-btn { color: ${withAlpha(appTheme.ink, 0.5)}; }
         .event-detail-edit-btn:hover { color: ${appTheme.ink}; }
         .event-detail-cancel-btn { background-color: transparent; }
-        .event-detail-cancel-btn:hover { background-color: ${appTheme.ink}0D; }
-        .event-detail-input::placeholder { color: ${appTheme.ink}4D; }
+        .event-detail-cancel-btn:hover { background-color: ${withAlpha(appTheme.ink, 0.05)}; }
+        .event-detail-input::placeholder { color: ${withAlpha(appTheme.ink, 0.3)}; }
       `}</style>
       <div
         className="rounded-2xl p-6 w-[400px] max-h-[80vh] overflow-y-auto"
@@ -161,11 +138,11 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: bgColor }}
             />
-            <span className="text-xs" style={{ color: `${appTheme.ink}80` }}>
+            <span className="text-xs" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>
               {isTaskSync ? '任务同步' : eventCalendar?.name || '日程'}
             </span>
             {isRecurringInstance && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: `${appTheme.ink}99`, backgroundColor: `${appTheme.primary}4D` }}>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ color: `${withAlpha(appTheme.ink, 0.6)}`, backgroundColor: `${withAlpha(appTheme.primary, 0.3)}` }}>
                 重复
               </span>
             )}
@@ -183,14 +160,33 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
         {isEditing ? (
           /* 编辑模式 */
           <div className="space-y-4">
-            {isRecurringInstance && editScope === 'this' && (
-              <div className="text-[10px] rounded-lg px-3 py-1.5" style={{ color: `${appTheme.ink}80`, backgroundColor: `${appTheme.primary}1A` }}>
-                仅修改 {recurringInfo?.dateStr} 这一天的实例
+            {isRecurringInstance && (
+              <div className="flex items-center gap-1 rounded-lg p-1" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.04)}` }}>
+                <button
+                  onClick={() => setEditScope('this')}
+                  className="flex-1 px-3 py-1.5 rounded-md text-xs transition-all"
+                  style={{
+                    backgroundColor: editScope === 'this' ? `${withAlpha(appTheme.primary, 0.15)}` : 'transparent',
+                    color: editScope === 'this' ? appTheme.primary : `${withAlpha(appTheme.ink, 0.5)}`,
+                  }}
+                >
+                  仅此一次
+                </button>
+                <button
+                  onClick={() => setEditScope('all')}
+                  className="flex-1 px-3 py-1.5 rounded-md text-xs transition-all"
+                  style={{
+                    backgroundColor: editScope === 'all' ? `${withAlpha(appTheme.primary, 0.15)}` : 'transparent',
+                    color: editScope === 'all' ? appTheme.primary : `${withAlpha(appTheme.ink, 0.5)}`,
+                  }}
+                >
+                  所有实例
+                </button>
               </div>
             )}
-            {isRecurringInstance && editScope === 'all' && (
-              <div className="text-[10px] rounded-lg px-3 py-1.5" style={{ color: `${appTheme.ink}80`, backgroundColor: `${appTheme.primary}1A` }}>
-                修改所有重复实例
+            {isRecurringInstance && editScope === 'this' && recurringInfo && (
+              <div className="text-[10px] -mt-2 px-1" style={{ color: `${withAlpha(appTheme.ink, 0.35)}` }}>
+                仅影响 {recurringInfo.dateStr} 这一天
               </div>
             )}
 
@@ -199,80 +195,69 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl focus:outline-none text-sm"
-              style={{ color: appTheme.ink, border: `1px solid ${appTheme.primary}4D`, backgroundColor: inputBg }}
+              className="w-full px-4 py-3 rounded-xl focus:outline-none text-sm"
+              style={{ color: appTheme.ink, border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`, backgroundColor: inputBg }}
               autoFocus
             />
 
             {/* 时间 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>开始</label>
+                <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>开始</label>
                 <input
                   type="datetime-local"
                   value={startAt}
                   onChange={(e) => setStartAt(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl focus:outline-none text-sm"
-                  style={{ color: appTheme.ink, border: `1px solid ${appTheme.primary}4D`, backgroundColor: inputBg }}
+                  style={{ color: appTheme.ink, border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`, backgroundColor: inputBg }}
                 />
               </div>
               <div>
-                <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>结束</label>
+                <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>结束</label>
                 <input
                   type="datetime-local"
                   value={endAt}
                   onChange={(e) => setEndAt(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl focus:outline-none text-sm"
-                  style={{ color: appTheme.ink, border: `1px solid ${appTheme.primary}4D`, backgroundColor: inputBg }}
+                  style={{ color: appTheme.ink, border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`, backgroundColor: inputBg }}
                 />
               </div>
             </div>
 
             {/* 日历 */}
             <div>
-              <label className="text-xs mb-2 block" style={{ color: `${appTheme.ink}80` }}>日历</label>
-              <select
+              <label className="text-xs mb-2 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>日历</label>
+              <Select
                 value={calendarId ?? ''}
-                onChange={(e) => setCalendarId(e.target.value || null)}
-                className="w-full px-3 py-2 rounded-xl text-sm outline-none"
-                style={{
-                  backgroundColor: inputBg,
-                  border: `1px solid ${appTheme.primary}4D`,
-                  color: appTheme.ink,
-                }}
-              >
-                <option value="">无分类</option>
-                {calendars.map((cal) => (
-                  <option key={cal.id} value={cal.id} style={{ backgroundColor: appTheme.canvas, color: appTheme.ink }}>
-                    {cal.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setCalendarId(v || null)}
+                placeholder="无分类"
+                options={calendars.map((cal) => ({ value: cal.id, label: cal.name }))}
+              />
             </div>
 
             {/* 地点 */}
             <div>
-              <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>地点</label>
+              <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>地点</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="可选"
                 className="event-detail-input w-full px-4 py-2 rounded-xl focus:outline-none text-sm"
-                style={{ color: appTheme.ink, border: `1px solid ${appTheme.primary}4D`, backgroundColor: inputBg }}
+                style={{ color: appTheme.ink, border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`, backgroundColor: inputBg }}
               />
             </div>
 
             {/* 描述 */}
             <div>
-              <label className="text-xs mb-1 block" style={{ color: `${appTheme.ink}80` }}>描述</label>
+              <label className="text-xs mb-1 block" style={{ color: `${withAlpha(appTheme.ink, 0.5)}` }}>描述</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="可选"
                 rows={3}
                 className="event-detail-input w-full px-4 py-2 rounded-xl focus:outline-none text-sm resize-none"
-                style={{ color: appTheme.ink, border: `1px solid ${appTheme.primary}4D`, backgroundColor: inputBg }}
+                style={{ color: appTheme.ink, border: `1px solid ${withAlpha(appTheme.primary, 0.3)}`, backgroundColor: inputBg }}
               />
             </div>
 
@@ -280,23 +265,26 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
             <div className="flex justify-between pt-2">
               <button
                 onClick={handleDeleteClick}
-                className="px-4 py-2 rounded-full text-sm text-red-500/70 hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="px-4 py-2 rounded-full text-sm transition-colors"
+                style={{ color: `${withAlpha(appTheme.danger, 0.7)}` }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = appTheme.danger; e.currentTarget.style.backgroundColor = `${withAlpha(appTheme.danger, 0.08)}`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = `${withAlpha(appTheme.danger, 0.7)}`; e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 删除
               </button>
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setIsEditing(false); setEditScope('all'); }}
+                  onClick={() => { setIsEditing(false); setEditScope('this'); }}
                   className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
-                  style={{ color: `${appTheme.ink}99` }}
+                  style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}
                 >
                   取消
                 </button>
                 <button
                   onClick={() => handleSave(editScope)}
-                  disabled={!title.trim()}
+                  disabled={!title.trim() || isSubmitting}
                   className="px-4 py-2 rounded-full text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  style={{ color: '#fff', backgroundColor: isSaveHovered ? `${appTheme.primary}CC` : appTheme.primary }}
+                  style={{ color: appTheme.onPrimary, backgroundColor: isSaveHovered ? `${withAlpha(appTheme.primary, 0.8)}` : appTheme.primary }}
                   onMouseEnter={() => setIsSaveHovered(true)}
                   onMouseLeave={() => setIsSaveHovered(false)}
                 >
@@ -312,7 +300,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
             <h2 className="text-xl font-medium" style={{ color: appTheme.ink }}>{event.title}</h2>
 
             {/* 时间 */}
-            <div className="flex items-center gap-2 text-sm" style={{ color: `${appTheme.ink}B2` }}>
+            <div className="flex items-center gap-2 text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.7)}` }}>
               <span>{formatDateTime(event.start_at)}</span>
               {event.end_at && (
                 <>
@@ -324,22 +312,22 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
 
             {/* 地点 */}
             {event.location && (
-              <div className="text-sm" style={{ color: `${appTheme.ink}B2` }}>
+              <div className="text-sm" style={{ color: `${withAlpha(appTheme.ink, 0.7)}` }}>
                 📍 {event.location}
               </div>
             )}
 
             {/* 描述 */}
             {event.description && (
-              <div className="text-sm rounded-xl p-3" style={{ color: `${appTheme.ink}B2`, backgroundColor: surfaceBg }}>
+              <div className="text-sm rounded-xl p-3" style={{ color: `${withAlpha(appTheme.ink, 0.7)}`, backgroundColor: surfaceBg }}>
                 {event.description}
               </div>
             )}
 
             {/* 重复规则 */}
             {event.rrule && (
-              <div className="text-xs rounded-lg px-3 py-2" style={{ color: `${appTheme.ink}80`, backgroundColor: appTheme.divider }}>
-                重复: {event.rrule}
+              <div className="text-xs rounded-lg px-3 py-2" style={{ color: `${withAlpha(appTheme.ink, 0.5)}`, backgroundColor: appTheme.divider }}>
+                重复: {humanizeRrule(event.rrule)}
               </div>
             )}
 
@@ -348,7 +336,7 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
               <button
                 onClick={onClose}
                 className="px-5 py-2 rounded-full text-sm transition-colors"
-                style={{ color: appTheme.ink, backgroundColor: isCloseHovered ? `${appTheme.primary}CC` : appTheme.primary }}
+                style={{ color: appTheme.ink, backgroundColor: isCloseHovered ? `${withAlpha(appTheme.primary, 0.8)}` : appTheme.primary }}
                 onMouseEnter={() => setIsCloseHovered(true)}
                 onMouseLeave={() => setIsCloseHovered(false)}
               >
@@ -358,74 +346,50 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
           </div>
         )}
 
-        {/* 重复事件范围选择 */}
-        {showScopeChoice && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
-            <div className="rounded-2xl p-5 w-[300px]" style={{ backgroundColor: appTheme.canvas }}>
-              <h3 className="text-lg font-medium mb-3" style={{ color: appTheme.ink }}>
-                {showScopeChoice === 'edit' ? '编辑范围' : '删除范围'}
-              </h3>
-              <p className="text-sm mb-4" style={{ color: `${appTheme.ink}B2` }}>
-                这是一个重复事件，你想{showScopeChoice === 'edit' ? '修改' : '删除'}哪个范围？
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => handleScopeChoice('this')}
-                  className="w-full px-4 py-3 rounded-xl text-sm text-left transition-colors"
-                  style={{ border: `1px solid ${appTheme.primary}33`, backgroundColor: inputBg }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = appTheme.canvasParchment)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = inputBg)}
-                >
-                  <div className="font-medium" style={{ color: appTheme.ink }}>只{showScopeChoice === 'edit' ? '修改' : '删除'}这一次</div>
-                  <div className="text-[10px] mt-0.5" style={{ color: `${appTheme.ink}80` }}>
-                    仅影响 {recurringInfo?.dateStr} 这一天
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleScopeChoice('all')}
-                  className="w-full px-4 py-3 rounded-xl text-sm text-left transition-colors"
-                  style={{ border: `1px solid ${appTheme.primary}33`, backgroundColor: inputBg }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = appTheme.canvasParchment)}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = inputBg)}
-                >
-                  <div className="font-medium" style={{ color: appTheme.ink }}>{showScopeChoice === 'edit' ? '修改' : '删除'}所有实例</div>
-                  <div className="text-[10px] mt-0.5" style={{ color: `${appTheme.ink}80` }}>
-                    影响整个重复事件系列
-                  </div>
-                </button>
-              </div>
-              <div className="flex justify-end mt-4">
-                <button
-                  onClick={() => setShowScopeChoice(null)}
-                  className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
-                  style={{ color: `${appTheme.ink}99` }}
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 删除确认（非重复事件） */}
-        {showDeleteConfirm && !isRecurringInstance && (
+        {/* 删除确认 */}
+        {showDeleteConfirm && (
           <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
             <div className="rounded-2xl p-5 w-[300px]" style={{ backgroundColor: appTheme.canvas }}>
               <h3 className="text-lg font-medium mb-3" style={{ color: appTheme.ink }}>确认删除</h3>
-              <p className="text-sm mb-4" style={{ color: `${appTheme.ink}B2` }}>
+              <p className="text-sm mb-4" style={{ color: `${withAlpha(appTheme.ink, 0.7)}` }}>
                 确定要删除「{event.title}」吗？
               </p>
+              {isRecurringInstance && (
+                <div className="flex items-center gap-1 rounded-lg p-1 mb-4" style={{ backgroundColor: `${withAlpha(appTheme.ink, 0.04)}` }}>
+                  <button
+                    onClick={() => setDeleteScope('this')}
+                    className="flex-1 px-3 py-1.5 rounded-md text-xs transition-all"
+                    style={{
+                      backgroundColor: deleteScope === 'this' ? `${withAlpha(appTheme.danger, 0.15)}` : 'transparent',
+                      color: deleteScope === 'this' ? appTheme.danger : `${withAlpha(appTheme.ink, 0.5)}`,
+                    }}
+                  >
+                    仅此一次
+                  </button>
+                  <button
+                    onClick={() => setDeleteScope('all')}
+                    className="flex-1 px-3 py-1.5 rounded-md text-xs transition-all"
+                    style={{
+                      backgroundColor: deleteScope === 'all' ? `${withAlpha(appTheme.danger, 0.15)}` : 'transparent',
+                      color: deleteScope === 'all' ? appTheme.danger : `${withAlpha(appTheme.ink, 0.5)}`,
+                    }}
+                  >
+                    所有实例
+                  </button>
+                </div>
+              )}
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
                   className="event-detail-cancel-btn px-4 py-2 rounded-full text-sm transition-colors"
-                  style={{ color: `${appTheme.ink}99` }}
+                  style={{ color: `${withAlpha(appTheme.ink, 0.6)}` }}
                 >
                   取消
                 </button>
                 <button
                   onClick={handleDelete}
-                  className="px-4 py-2 rounded-full text-sm bg-red-500 text-white hover:bg-red-600 transition-colors"
+                  className="px-4 py-2 rounded-full text-sm transition-colors"
+                  style={{ backgroundColor: appTheme.danger, color: appTheme.onPrimary }}
                 >
                   删除
                 </button>
@@ -436,4 +400,33 @@ export function EventDetail({ event, onUpdate, onDelete, onUpdateInstance, onDel
       </div>
     </div>
   );
+}
+
+const FREQ_LABELS: Record<string, string> = {
+  DAILY: '天', WEEKLY: '周', MONTHLY: '月', YEARLY: '年',
+};
+const DAY_LABELS: Record<string, string> = {
+  MO: '周一', TU: '周二', WE: '周三', TH: '周四', FR: '周五', SA: '周六', SU: '周日',
+};
+
+function humanizeRrule(rrule: string): string {
+  try {
+    const parts = rrule.split(';');
+    const map: Record<string, string> = {};
+    for (const p of parts) {
+      const [k, v] = p.split('=');
+      if (k && v) map[k] = v;
+    }
+    const freq = FREQ_LABELS[map.FREQ] || map.FREQ || '';
+    const interval = map.INTERVAL ? parseInt(map.INTERVAL) : 1;
+    const intervalText = interval > 1 ? `每${interval}${freq}` : `每${freq}`;
+
+    if (map.BYDAY) {
+      const days = map.BYDAY.split(',').map((d) => DAY_LABELS[d] || d).join('、');
+      return `${intervalText}的${days}`;
+    }
+    return intervalText;
+  } catch {
+    return rrule;
+  }
 }

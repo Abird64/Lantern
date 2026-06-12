@@ -1,7 +1,10 @@
 mod ai;
 mod db;
+#[cfg(feature = "gui")]
 mod commands;
+mod sync;
 
+#[cfg(feature = "gui")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::Manager;
@@ -21,6 +24,12 @@ pub fn run() {
             app.manage(db_state);
             app.manage(app_data_state);
 
+            // 初始化同步状态
+            app.manage(sync::sync_engine::SyncState::new());
+
+            // 启动后台同步任务
+            sync::sync_engine::spawn_background_sync(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -35,13 +44,20 @@ pub fn run() {
             commands::skill_commands::list_skills,
             commands::skill_commands::get_task_skills,
             commands::skill_commands::set_task_skills,
+            commands::skill_commands::get_skill_activity,
+            commands::skill_commands::get_xp_sources,
             commands::journal_commands::get_journal_by_date,
             commands::journal_commands::save_journal,
             commands::journal_commands::get_timeline,
+            commands::journal_commands::get_journal_count,
             commands::journal_commands::get_ai_diary,
             commands::journal_commands::save_ai_diary,
             commands::journal_commands::complete_diary,
             commands::journal_commands::daily_reflection,
+            commands::journal_commands::upload_journal_image,
+            commands::journal_commands::get_journal_images,
+            commands::journal_commands::delete_journal_image,
+            commands::journal_commands::get_journal_image_data,
             commands::contact_commands::create_contact,
             commands::contact_commands::get_contact,
             commands::contact_commands::list_contacts,
@@ -70,6 +86,8 @@ pub fn run() {
             commands::ai_commands::rename_conversation,
             commands::ai_commands::list_messages,
             commands::ai_commands::send_message,
+            commands::ai_commands::test_ai_connection,
+            commands::ai_commands::get_chat_image_data,
             commands::ai_commands::execute_tool_calls,
             commands::ai_commands::execute_single_tool_call,
             commands::ai_commands::finalize_tool_calls,
@@ -97,6 +115,39 @@ pub fn run() {
             commands::habit_commands::get_streak,
             commands::habit_commands::get_all_streaks,
             commands::habit_commands::get_week_matrix,
+            commands::sync_commands::sync_test_connection,
+            commands::sync_commands::sync_set_enabled,
+            commands::sync_commands::sync_now,
+            commands::sync_commands::sync_get_status,
+            commands::pomodoro_commands::start_pomodoro,
+            commands::pomodoro_commands::complete_pomodoro,
+            commands::pomodoro_commands::cancel_pomodoro,
+            commands::pomodoro_commands::get_active_pomodoro,
+            commands::pomodoro_commands::get_pomodoro_stats,
+            commands::wish_commands::list_wishes,
+            commands::wish_commands::get_wish,
+            commands::wish_commands::create_wish,
+            commands::wish_commands::update_wish,
+            commands::wish_commands::delete_wish,
+            commands::wish_commands::mark_wish_achieved,
+            commands::wish_commands::get_glow_balance,
+            commands::wish_commands::add_glow,
+            commands::wish_commands::add_tickets,
+            commands::wish_commands::buy_tickets,
+            commands::wish_commands::get_pity_progress,
+            commands::wish_commands::list_draws,
+            commands::wish_commands::draw_wish,
+            commands::wish_commands::claim_pity_wish,
+            commands::wish_commands::redeem_wish,
+            commands::wish_commands::list_inventory,
+            commands::wish_commands::redeem_draw,
+            commands::wish_commands::get_inventory_count,
+            commands::wish_commands::adjust_wish_stock,
+            commands::glow_ledger_commands::list_glow_ledger,
+            commands::aihot_commands::fetch_aihot_items,
+            commands::aihot_commands::fetch_aihot_daily,
+            commands::aihot_commands::fetch_aihot_daily_by_date,
+            commands::aihot_commands::fetch_aihot_dailies,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

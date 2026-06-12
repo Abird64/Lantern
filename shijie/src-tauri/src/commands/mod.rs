@@ -1,11 +1,17 @@
 pub mod ai_commands;
+pub mod ai_tool_helper;
+pub mod aihot_commands;
 pub mod calendar_commands;
 pub mod config_commands;
 pub mod contact_commands;
 pub mod favorite_commands;
+pub mod glow_ledger_commands;
 pub mod habit_commands;
 pub mod journal_commands;
 pub mod memory_commands;
+pub mod pomodoro_commands;
 pub mod schedule_commands;
 pub mod skill_commands;
+pub mod sync_commands;
 pub mod task_commands;
+pub mod wish_commands;
